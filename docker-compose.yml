@@ -1,0 +1,198 @@
+# SentinelDLP Docker Compose Configuration
+# 
+# Usage:
+#   docker compose up -d          # Start all services
+#   docker compose down           # Stop all services
+#   docker compose logs -f        # View logs
+#   docker compose ps             # Check status
+
+services:
+  # ============================================
+  # Backend API Service (FastAPI)
+  # ============================================
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: sentineldlp-backend
+    restart: unless-stopped
+    environment:
+      # Claude API Configuration (set via .env file or override)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+      - MAX_TOKENS=${MAX_TOKENS:-4096}
+      # Application settings
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Elasticsearch Configuration
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+    volumes:
+      # Persist incident data
+      - sentineldlp-data:/app/data
+      # Persist uploaded files
+      - sentineldlp-uploads:/app/data/uploads
+      # Persist encrypted configuration (FR-002)
+      - sentineldlp-config:/app/data/config
+    networks:
+      - sentineldlp-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================
+  # Elasticsearch Service
+  # ============================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    container_name: sentineldlp-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - cluster.name=sentineldlp-cluster
+    volumes:
+      - sentineldlp-esdata:/usr/share/elasticsearch/data
+    networks:
+      - sentineldlp-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:${ELASTIC_PASSWORD:-changeme} http://localhost:9200/_cluster/health | grep -q '\"status\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # ============================================
+  # ES Setup Service (Configure Kibana credentials)
+  # ============================================
+  es-setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    container_name: sentineldlp-es-setup
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      - KIBANA_PASSWORD=${KIBANA_PASSWORD:-changeme}
+    command: >
+      bash -c '
+        echo "Setting kibana_system password...";
+        curl -s -X POST -u "elastic:${ELASTIC_PASSWORD:-changeme}" \
+          -H "Content-Type: application/json" \
+          "http://elasticsearch:9200/_security/user/kibana_system/_password" \
+          -d "{\"password\":\"${KIBANA_PASSWORD:-changeme}\"}" || true;
+        echo "Done!";
+      '
+    networks:
+      - sentineldlp-network
+
+  # ============================================
+  # Kibana Service (ES Management UI)
+  # ============================================
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.0
+    container_name: sentineldlp-kibana
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD:-changeme}
+      - SERVER_NAME=sentineldlp-kibana
+    ports:
+      - "${KIBANA_PORT:-5601}:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      es-setup:
+        condition: service_completed_successfully
+    networks:
+      - sentineldlp-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
+  # ============================================
+  # Frontend Service (NGINX)
+  # ============================================
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: sentineldlp-frontend
+    restart: unless-stopped
+    ports:
+      # Expose on host port 8122 (change as needed)
+      - "${FRONTEND_PORT:-8122}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sentineldlp-network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  sentineldlp-network:
+    driver: bridge
+    name: sentineldlp-net
+
+# ============================================
+# Volumes (Persistent Storage)
+# ============================================
+volumes:
+  sentineldlp-data:
+    driver: local
+    name: sentineldlp-data
+  sentineldlp-uploads:
+    driver: local
+    name: sentineldlp-uploads
+  sentineldlp-config:
+    driver: local
+    name: sentineldlp-config
+  sentineldlp-esdata:
+    driver: local
+    name: sentineldlp-esdata

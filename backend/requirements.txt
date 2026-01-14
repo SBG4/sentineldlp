@@ -1,0 +1,39 @@
+# SentinelDLP Backend Dependencies
+# Core Framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.12
+pydantic==2.9.0
+
+# LLM Integration
+anthropic==0.40.0
+
+# Configuration & Security (FR-002)
+cryptography>=42.0.0
+python-jose>=3.3.0
+httpx>=0.27.0
+
+# Elasticsearch Integration (FR-003)
+elasticsearch>=8.0.0,<9.0.0
+
+# Universal File Processing (FR-001)
+# PDF extraction
+pdfplumber>=0.11.0
+
+# Microsoft Office documents
+python-docx>=1.1.0
+openpyxl>=3.1.0
+python-pptx>=0.6.23
+
+# RTF documents
+striprtf>=0.0.26
+
+# Image processing and OCR
+Pillow>=10.0.0
+pytesseract>=0.3.10
+
+# Email parsing (MSG format)
+extract-msg>=0.48.0
+
+# File type detection (optional, uses magic bytes as fallback)
+python-magic>=0.4.27

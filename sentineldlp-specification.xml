@@ -1,0 +1,430 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SentinelDLP Project Specification
+  Version: 1.3.0
+  Last Updated: 2026-01-14
+  Purpose: Authoritative guardrail document for Claude instances working on this project
+
+  USAGE INSTRUCTIONS:
+  1. Provide this XML to any Claude instance before requesting feature additions
+  2. Claude must parse and acknowledge understanding before proceeding
+  3. All feature requests must be validated against constraints defined herein
+  4. Changes to this specification require human review and approval
+
+  CURRENT STATUS:
+  - FR-002 IMPLEMENTED: WebGUI Admin Configuration Management
+  - 1 Approved Feature pending implementation (FR-001)
+  - 6 Open Gaps remaining (GAP-008 Resolved)
+-->
+
+<sentineldlp_specification version="1.3.0">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       SECTION 1: PROJECT IDENTITY & PURPOSE
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <project_identity>
+    <name>SentinelDLP</name>
+    <codename>sensitive-detector</codename>
+    <classification>Enterprise Data Loss Prevention Tool</classification>
+    <owner_role>Senior Active Directory Security Auditor and Compliance Analyst</owner_role>
+    <deployment_region>Dubai, UAE</deployment_region>
+
+    <mission_statement>
+      Provide enterprise-grade sensitive information detection and classification
+      capabilities integrated with existing security infrastructure (Elastic Stack 9.1.3,
+      Active Directory, Docker ecosystems) to support compliance monitoring, incident
+      response, and executive reporting for information security governance.
+    </mission_statement>
+
+    <core_objectives>
+      <objective priority="1">Detect and classify sensitive information across multiple dimensions</objective>
+      <objective priority="2">Integrate with existing Elastic Stack 9.1.3 infrastructure</objective>
+      <objective priority="3">Support 1000+ concurrent users in enterprise environment</objective>
+      <objective priority="4">Provide department-level risk classification for compliance reporting</objective>
+      <objective priority="5">Generate audit-ready incident logs for forensics and compliance</objective>
+    </core_objectives>
+  </project_identity>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       SECTION 2: CURRENT IMPLEMENTATION STATUS
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <current_implementation version="1.3">
+    <status>DOCKERIZED_WITH_ADMIN_CONFIG</status>
+    <validation_score>65/100</validation_score>
+    <verdict>IMPROVED - Config infrastructure ready for enterprise features</verdict>
+
+    <completed_components>
+      <component name="web_gui" status="COMPLETE">
+        <description>React-based single-page application with dark cybersecurity aesthetic</description>
+        <location>/frontend/index.html</location>
+        <features>
+          <feature>File upload with drag-drop support</feature>
+          <feature>Text paste input mode</feature>
+          <feature>Score ring visualization</feature>
+          <feature>7-dimension sensitivity bars</feature>
+          <feature>9-department relevance grid</feature>
+          <feature>Incident log table with filtering</feature>
+          <feature>Statistics dashboard</feature>
+          <feature>Toast notifications</feature>
+          <feature>Claude API settings configuration</feature>
+          <feature status="NEW">Admin Configuration Panel (FR-002)</feature>
+        </features>
+      </component>
+
+      <component name="api_service" status="COMPLETE">
+        <description>FastAPI backend with RESTful endpoints</description>
+        <location>/backend/main.py</location>
+        <endpoints>
+          <endpoint method="POST" path="/api/analyze/text">Analyze text content</endpoint>
+          <endpoint method="POST" path="/api/analyze/file">Analyze uploaded file</endpoint>
+          <endpoint method="GET" path="/api/incidents">Retrieve incident log</endpoint>
+          <endpoint method="GET" path="/api/stats">Get statistics</endpoint>
+          <endpoint method="GET" path="/api/settings">Get current settings (legacy)</endpoint>
+          <endpoint method="POST" path="/api/settings">Update settings (legacy)</endpoint>
+          <endpoint method="GET" path="/api/admin/config" status="NEW">Get admin config (masked)</endpoint>
+          <endpoint method="PUT" path="/api/admin/config" status="NEW">Update admin config</endpoint>
+          <endpoint method="POST" path="/api/admin/config/test" status="NEW">Test connectivity</endpoint>
+          <endpoint method="POST" path="/api/admin/config/rotate-key" status="NEW">Rotate encryption key</endpoint>
+          <endpoint method="GET" path="/api/admin/config/audit" status="NEW">Get audit log</endpoint>
+          <endpoint method="GET" path="/api/admin/config/status" status="NEW">Get config status</endpoint>
+        </endpoints>
+      </component>
+
+      <component name="config_manager" status="COMPLETE">
+        <description>Secure encrypted configuration storage (FR-002)</description>
+        <location>/backend/config_manager.py</location>
+        <features>
+          <feature>Fernet symmetric encryption for secrets</feature>
+          <feature>Audit logging for all configuration changes</feature>
+          <feature>Master key rotation capability</feature>
+          <feature>Secrets masking in API responses</feature>
+          <feature>Environment variable override support</feature>
+          <feature>First-run detection</feature>
+        </features>
+      </component>
+
+      <component name="crypto_utils" status="COMPLETE">
+        <description>Cryptographic utilities for secret management (FR-002)</description>
+        <location>/backend/crypto_utils.py</location>
+        <features>
+          <feature>Master key generation and storage</feature>
+          <feature>Encrypt/decrypt operations</feature>
+          <feature>Key rotation with backup</feature>
+          <feature>Secret masking utilities</feature>
+        </features>
+      </component>
+
+      <component name="sensitivity_analysis" status="COMPLETE">
+        <description>Multi-dimensional sensitivity scoring via Claude AI</description>
+        <dimensions count="7" immutable="true">
+          <dimension id="1">PII (Personal Identifiable Information)</dimension>
+          <dimension id="2">Financial Data</dimension>
+          <dimension id="3">Strategic Business Information</dimension>
+          <dimension id="4">Intellectual Property</dimension>
+          <dimension id="5">Legal/Compliance Data</dimension>
+          <dimension id="6">Operational Security</dimension>
+          <dimension id="7">HR/Employee Information</dimension>
+        </dimensions>
+        <scoring_scale>
+          <level range="0-30" severity="LOW" color="green"/>
+          <level range="31-60" severity="MEDIUM" color="yellow"/>
+          <level range="61-85" severity="HIGH" color="orange"/>
+          <level range="86-100" severity="CRITICAL" color="red"/>
+        </scoring_scale>
+      </component>
+
+      <component name="department_classification" status="COMPLETE">
+        <description>Relevance scoring across organizational departments</description>
+        <departments count="9" immutable="true">
+          <department id="1">Human Resources</department>
+          <department id="2">Finance</department>
+          <department id="3">Legal</department>
+          <department id="4">IT/Security</department>
+          <department id="5">Executive</department>
+          <department id="6">R&amp;D</department>
+          <department id="7">Sales</department>
+          <department id="8">Operations</department>
+          <department id="9">Marketing</department>
+        </departments>
+      </component>
+
+      <component name="docker_deployment" status="COMPLETE">
+        <description>Multi-container Docker orchestration</description>
+        <location>/docker/</location>
+        <files>
+          <file>Dockerfile.backend - Python 3.11-slim with FastAPI/Uvicorn</file>
+          <file>Dockerfile.frontend - NGINX 1.25-alpine serving React SPA</file>
+          <file>docker-compose.yml - Multi-service orchestration with 3 volumes</file>
+          <file>nginx.conf - Reverse proxy with security headers</file>
+          <file>Makefile - Management commands</file>
+        </files>
+        <volumes>
+          <volume name="sentineldlp-data">Incident data storage</volume>
+          <volume name="sentineldlp-uploads">File uploads</volume>
+          <volume name="sentineldlp-config" status="NEW">Encrypted configuration (FR-002)</volume>
+        </volumes>
+      </component>
+    </completed_components>
+
+    <file_structure>
+      <directory name="sensitive-detector" type="root">
+        <directory name="backend">
+          <file name="main.py" type="python">FastAPI application</file>
+          <file name="config_manager.py" type="python" status="NEW">Config management (FR-002)</file>
+          <file name="crypto_utils.py" type="python" status="NEW">Encryption utilities (FR-002)</file>
+          <file name="requirements.txt" type="text">Python dependencies</file>
+        </directory>
+        <directory name="frontend">
+          <file name="index.html" type="html">React SPA with Admin panel</file>
+        </directory>
+        <directory name="docker">
+          <file name="Dockerfile.backend" type="dockerfile">Backend container</file>
+          <file name="Dockerfile.frontend" type="dockerfile">Frontend container</file>
+          <file name="nginx.conf" type="nginx">Reverse proxy config</file>
+        </directory>
+        <directory name="data">
+          <file name="incidents.json" type="json">Incident storage</file>
+          <directory name="config" status="NEW">
+            <file name="settings.enc.json" type="json">Encrypted configuration</file>
+            <file name="master.key" type="binary">Encryption key (0600 permissions)</file>
+            <file name="audit.log.json" type="json">Config change audit log</file>
+          </directory>
+        </directory>
+        <file name="docker-compose.yml" type="yaml">Orchestration</file>
+        <file name="Makefile" type="make">Docker management commands</file>
+        <file name="README.md" type="markdown">Documentation</file>
+      </directory>
+    </file_structure>
+  </current_implementation>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       SECTION 3: ENTERPRISE REQUIREMENTS & GAPS
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <enterprise_requirements>
+    <target_environment>
+      <users>1000+ concurrent</users>
+      <endpoints>300+ managed endpoints</endpoints>
+      <elastic_version>9.1.3</elastic_version>
+      <container_platform>Docker</container_platform>
+      <identity_provider>Active Directory</identity_provider>
+      <compliance_frameworks>ISR Controls, Internal Security Governance</compliance_frameworks>
+    </target_environment>
+
+    <identified_gaps>
+      <gap id="GAP-001" severity="CRITICAL" status="OPEN">
+        <title>No Queue System</title>
+        <current_state>Single-threaded FastAPI, synchronous processing</current_state>
+        <impact>Maximum 10-20 concurrent users before system degradation</impact>
+        <required_solution>Redis + Celery worker pool for async job processing</required_solution>
+        <priority>1</priority>
+      </gap>
+
+      <gap id="GAP-002" severity="CRITICAL" status="PARTIALLY_ADDRESSED">
+        <title>No Active Directory Integration</title>
+        <current_state>Configuration infrastructure ready (FR-002), authentication not implemented</current_state>
+        <impact>Cannot deploy in enterprise environment without auth</impact>
+        <required_solution>LDAP/Kerberos integration with RBAC</required_solution>
+        <priority>2</priority>
+        <note>FR-002 provides AD configuration storage, implementation pending</note>
+      </gap>
+
+      <gap id="GAP-003" severity="HIGH" status="PARTIALLY_ADDRESSED">
+        <title>No Elasticsearch Integration</title>
+        <current_state>Configuration infrastructure ready (FR-002), connector not implemented</current_state>
+        <impact>Not integrated with existing Elastic Stack 9.1.3</impact>
+        <required_solution>ES ingest pipeline with proper indexing strategy</required_solution>
+        <priority>3</priority>
+        <note>FR-002 provides ES configuration storage, implementation pending</note>
+      </gap>
+
+      <gap id="GAP-004" severity="HIGH" status="PARTIALLY_ADDRESSED">
+        <title>External API Dependency</title>
+        <current_state>LLM provider configurable via FR-002 admin panel</current_state>
+        <impact>Data residency concern for Dubai deployment</impact>
+        <required_solution>On-premise LLM option (vLLM, Ollama with Mistral/Llama)</required_solution>
+        <priority>4</priority>
+        <note>FR-002 provides LLM provider switching, local LLM connector pending</note>
+      </gap>
+
+      <gap id="GAP-005" severity="HIGH" status="OPEN">
+        <title>No File Chunking / Limited File Support</title>
+        <current_state>Loads entire file into memory, limited format support</current_state>
+        <impact>Large files (&gt;10MB) will timeout or crash; many formats unsupported</impact>
+        <required_solution>Streaming/chunking strategy + universal file type support</required_solution>
+        <priority>5</priority>
+        <note>FR-001 addresses this with universal file type support and 10GB handling</note>
+      </gap>
+
+      <gap id="GAP-006" severity="HIGH" status="OPEN">
+        <title>No Load Balancing</title>
+        <current_state>Single FastAPI instance</current_state>
+        <impact>No horizontal scaling, single point of failure</impact>
+        <required_solution>Multiple workers behind NGINX with health checks</required_solution>
+        <priority>6</priority>
+      </gap>
+
+      <gap id="GAP-007" severity="MEDIUM" status="OPEN">
+        <title>No HTTPS/TLS</title>
+        <current_state>HTTP only</current_state>
+        <impact>Sensitive documents transmitted unencrypted</impact>
+        <required_solution>NGINX reverse proxy with SSL termination</required_solution>
+        <priority>7</priority>
+      </gap>
+
+      <gap id="GAP-008" severity="MEDIUM" status="RESOLVED">
+        <title>No Docker Deployment</title>
+        <current_state>Fully containerized with docker-compose</current_state>
+        <impact>RESOLVED - Multi-container orchestration implemented</impact>
+        <resolution_date>2026-01-14</resolution_date>
+        <priority>8</priority>
+      </gap>
+    </identified_gaps>
+  </enterprise_requirements>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       SECTION 4: TECHNICAL CONSTRAINTS & STANDARDS
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <technical_constraints>
+    <languages>
+      <language name="Python" version="3.10+" use="Backend API, Celery workers"/>
+      <language name="JavaScript" version="ES6+" use="Frontend React components"/>
+      <language name="Bash" version="5.0+" use="Deployment scripts"/>
+    </languages>
+
+    <frameworks>
+      <framework name="FastAPI" version="latest" required="true">Backend API framework</framework>
+      <framework name="React" version="18+" required="true">Frontend UI (CDN-loaded)</framework>
+      <framework name="Celery" version="5+" required="false">Async task queue</framework>
+      <framework name="Redis" version="7+" required="false">Message broker/cache</framework>
+    </frameworks>
+
+    <dependencies_added_fr002>
+      <dependency>cryptography>=42.0.0</dependency>
+      <dependency>python-jose>=3.3.0</dependency>
+      <dependency>httpx>=0.27.0</dependency>
+    </dependencies_added_fr002>
+
+    <coding_standards>
+      <standard category="security">
+        <rule>Never log sensitive data (PII, credentials, API keys)</rule>
+        <rule>Validate and sanitize all user inputs</rule>
+        <rule>Use parameterized queries for database operations</rule>
+        <rule>Implement rate limiting on all endpoints</rule>
+        <rule>Use secure defaults for all configurations</rule>
+        <rule>Encrypt all secrets at rest using Fernet symmetric encryption</rule>
+        <rule>Mask secret values in all API responses and logs</rule>
+        <rule>Store encryption keys with 0600 file permissions</rule>
+      </standard>
+    </coding_standards>
+  </technical_constraints>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       SECTION 5: APPROVED FEATURES QUEUE
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <approved_features_queue>
+    <queue_status>ACTIVE</queue_status>
+    <pending_count>1</pending_count>
+    <implemented_count>1</implemented_count>
+
+    <approved_feature status="IMPLEMENTED">
+      <id>FR-002</id>
+      <title>WebGUI Admin Configuration Management</title>
+      <approved_date>2026-01-14</approved_date>
+      <implemented_date>2026-01-14</implemented_date>
+      <implementation_notes>
+        - Created /backend/crypto_utils.py for Fernet encryption
+        - Created /backend/config_manager.py for secure config storage
+        - Added 6 new admin API endpoints to main.py
+        - Added AdminPage component to frontend with tabbed interface
+        - Added sentineldlp-config Docker volume
+        - All secrets encrypted at rest
+        - Audit logging for all config changes
+        - Connection testing for LLM/ES/AD
+        - Key rotation functionality
+      </implementation_notes>
+      <files_created>
+        <file>/backend/crypto_utils.py</file>
+        <file>/backend/config_manager.py</file>
+      </files_created>
+      <files_modified>
+        <file>/backend/main.py</file>
+        <file>/backend/requirements.txt</file>
+        <file>/frontend/index.html</file>
+        <file>/docker/Dockerfile.backend</file>
+        <file>/docker-compose.yml</file>
+        <file>/README.md</file>
+      </files_modified>
+    </approved_feature>
+
+    <approved_feature status="PENDING">
+      <id>FR-001</id>
+      <title>Universal File Type Support with OCR Integration</title>
+      <approved_date>2026-01-14</approved_date>
+      <implementation_priority>1</implementation_priority>
+      <addresses_gap>GAP-005</addresses_gap>
+      <estimated_complexity>HIGH</estimated_complexity>
+    </approved_feature>
+  </approved_features_queue>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       SECTION 6: VERSION HISTORY
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <version_history>
+    <version number="1.3.0" date="2026-01-14">
+      <author>Implementation Claude Instance</author>
+      <changes>
+        <change>IMPLEMENTED FR-002: WebGUI Admin Configuration Management</change>
+        <change>Created crypto_utils.py for Fernet encryption</change>
+        <change>Created config_manager.py for secure config storage</change>
+        <change>Added 6 admin API endpoints</change>
+        <change>Added AdminPage React component with tabbed interface</change>
+        <change>Added sentineldlp-config Docker volume</change>
+        <change>Updated GAP-002, GAP-003, GAP-004 to PARTIALLY_ADDRESSED</change>
+        <change>Validation score improved from 58 to 65</change>
+      </changes>
+    </version>
+    <version number="1.2.0" date="2026-01-14">
+      <author>Feature Request Claude Instance</author>
+      <changes>
+        <change>Added FR-001 and FR-002 to approved queue</change>
+      </changes>
+    </version>
+    <version number="1.1.0" date="2026-01-14">
+      <author>Implementation Claude Instance</author>
+      <changes>
+        <change>Added Docker containerization (GAP-008 RESOLVED)</change>
+      </changes>
+    </version>
+    <version number="1.0.0" date="2026-01-14">
+      <author>Implementation Claude Instance</author>
+      <changes>
+        <change>Initial specification document</change>
+      </changes>
+    </version>
+  </version_history>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       SECTION 7: QUICK REFERENCE
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <quick_reference>
+    <summary>
+      <item key="Project">SentinelDLP - Enterprise DLP Tool</item>
+      <item key="Specification Version">1.3.0</item>
+      <item key="Implementation Version">1.3 (with Admin Config)</item>
+      <item key="Validation Score">65/100 - IMPROVED</item>
+      <item key="Target Users">1000+ concurrent</item>
+      <item key="Elastic Version">9.1.3</item>
+      <item key="Open Gaps">6 (2 Critical, 4 High/Medium)</item>
+      <item key="Partially Addressed Gaps">3 (GAP-002, GAP-003, GAP-004)</item>
+      <item key="Resolved Gaps">1 (GAP-008 Docker)</item>
+      <item key="Implemented Features">1 (FR-002)</item>
+      <item key="Pending Features">1 (FR-001)</item>
+      <item key="Deployment Region">Dubai, UAE</item>
+    </summary>
+
+    <next_implementation_priority>
+      FR-001: Universal File Type Support with OCR Integration
+    </next_implementation_priority>
+  </quick_reference>
+
+</sentineldlp_specification>

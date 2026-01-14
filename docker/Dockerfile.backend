@@ -1,0 +1,76 @@
+# SentinelDLP Backend Dockerfile
+# FastAPI application with Uvicorn ASGI server
+# Includes OCR and universal file processing support (FR-001)
+
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies including OCR and document processing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Basic utilities
+    curl \
+    gosu \
+    # OCR support - Tesseract with English and Arabic
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-ara \
+    # PDF processing
+    poppler-utils \
+    # Image processing libraries
+    libmagic1 \
+    libjpeg62-turbo \
+    libpng16-16 \
+    libtiff6 \
+    libwebp7 \
+    # Build dependencies for some Python packages
+    gcc \
+    libffi-dev \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user for security
+RUN groupadd --gid 1000 sentineldlp \
+    && useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home sentineldlp
+
+# Copy requirements first (for layer caching)
+COPY backend/requirements.txt /app/requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY backend/main.py /app/main.py
+COPY backend/config_manager.py /app/config_manager.py
+COPY backend/crypto_utils.py /app/crypto_utils.py
+COPY backend/elasticsearch_service.py /app/elasticsearch_service.py
+COPY backend/elasticsearch_mappings.py /app/elasticsearch_mappings.py
+COPY backend/file_storage_service.py /app/file_storage_service.py
+COPY backend/file_processor.py /app/file_processor.py
+COPY backend/migrate_to_elasticsearch.py /app/migrate_to_elasticsearch.py
+
+# Copy entrypoint script
+COPY docker/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Create data directories with proper permissions
+RUN mkdir -p /app/data/uploads /app/data/config \
+    && chown -R sentineldlp:sentineldlp /app
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/stats || exit 1
+
+# Run entrypoint as root (it will handle permissions and drop to sentineldlp user)
+ENTRYPOINT ["/app/entrypoint.sh"]

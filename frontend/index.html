@@ -1,0 +1,3278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SentinelDLP | Sensitive Information Detection</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --bg-card: #15151f;
+            --border-color: #2a2a3a;
+            --text-primary: #e8e8f0;
+            --text-secondary: #8888a0;
+            --text-muted: #55556a;
+            --accent-cyan: #00d4ff;
+            --accent-purple: #8b5cf6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-orange: #f97316;
+            --glow-cyan: rgba(0, 212, 255, 0.15);
+            --glow-purple: rgba(139, 92, 246, 0.15);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 260px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+        }
+        
+        .logo {
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .logo-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        
+        .logo-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        
+        .nav-menu {
+            flex: 1;
+            padding: 16px 12px;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .nav-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        
+        .nav-item.active {
+            background: linear-gradient(135deg, var(--glow-cyan), var(--glow-purple));
+            color: var(--accent-cyan);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+        }
+        
+        .nav-icon {
+            width: 20px;
+            height: 20px;
+            opacity: 0.8;
+        }
+        
+        .nav-item.active .nav-icon {
+            opacity: 1;
+        }
+        
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 32px;
+            background: var(--bg-primary);
+            min-height: 100vh;
+        }
+        
+        .page-header {
+            margin-bottom: 32px;
+        }
+        
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+        
+        .page-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+        
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--stat-color, var(--accent-cyan));
+        }
+        
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        /* Upload Zone */
+        .upload-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 16px;
+            padding: 60px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: var(--bg-tertiary);
+        }
+        
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--accent-cyan);
+            background: var(--glow-cyan);
+        }
+        
+        .upload-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 20px;
+            opacity: 0.5;
+        }
+        
+        .upload-text {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        
+        .upload-hint {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        
+        /* Text Input */
+        .text-input-area {
+            width: 100%;
+            min-height: 200px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            resize: vertical;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+        
+        .text-input-area:focus {
+            border-color: var(--accent-cyan);
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 212, 255, 0.3);
+        }
+        
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--bg-card);
+            border-color: var(--accent-cyan);
+        }
+        
+        .btn-danger {
+            background: var(--accent-red);
+            color: white;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+        
+        .form-input:focus {
+            border-color: var(--accent-cyan);
+        }
+        
+        .form-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238888a0' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            padding-right: 40px;
+        }
+        
+        /* Severity Badges */
+        .severity-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .severity-low {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+        }
+        
+        .severity-medium {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--accent-yellow);
+        }
+        
+        .severity-high {
+            background: rgba(249, 115, 22, 0.15);
+            color: var(--accent-orange);
+        }
+        
+        .severity-critical {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+        }
+        
+        /* Results Section */
+        .results-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+        
+        .score-ring {
+            width: 180px;
+            height: 180px;
+            margin: 0 auto 24px;
+            position: relative;
+        }
+        
+        .score-ring svg {
+            transform: rotate(-90deg);
+        }
+        
+        .score-ring-bg {
+            fill: none;
+            stroke: var(--border-color);
+            stroke-width: 12;
+        }
+        
+        .score-ring-progress {
+            fill: none;
+            stroke-width: 12;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1s ease;
+        }
+        
+        .score-value-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+        
+        .score-number {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 48px;
+            font-weight: 700;
+        }
+        
+        .score-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* Dimension Bars */
+        .dimension-item {
+            margin-bottom: 16px;
+        }
+        
+        .dimension-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        
+        .dimension-name {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        .dimension-score {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .dimension-bar {
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .dimension-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        
+        /* Table */
+        .incidents-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .incidents-table th {
+            text-align: left;
+            padding: 14px 16px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .incidents-table td {
+            padding: 16px;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+        
+        .incidents-table tr:hover td {
+            background: var(--bg-tertiary);
+        }
+        
+        .filename-cell {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-primary);
+        }
+        
+        .timestamp-cell {
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        
+        /* Findings List */
+        .finding-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        
+        .finding-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .finding-category {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .finding-description {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        
+        .finding-examples {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .example-tag {
+            background: var(--bg-primary);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        
+        /* Department Grid */
+        .dept-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        
+        .dept-item {
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .dept-name {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        /* Actions List */
+        .action-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .action-item:last-child {
+            border-bottom: none;
+        }
+        
+        .action-icon {
+            width: 20px;
+            height: 20px;
+            color: var(--accent-cyan);
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        
+        .action-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+        
+        /* Loading States */
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 40px auto;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 10, 15, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            z-index: 1000;
+        }
+        
+        .loading-text {
+            margin-top: 24px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+        
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1100;
+        }
+        
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideIn 0.3s ease;
+            max-width: 400px;
+        }
+        
+        .toast-success {
+            border-color: var(--accent-green);
+        }
+        
+        .toast-error {
+            border-color: var(--accent-red);
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        
+        .empty-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            opacity: 0.3;
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 16px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+        }
+        
+        .tab:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+        
+        .tab.active {
+            background: linear-gradient(135deg, var(--glow-cyan), var(--glow-purple));
+            color: var(--accent-cyan);
+        }
+        
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .results-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+            .main-content {
+                margin-left: 0;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+        
+        // API Configuration
+        // API Base URL - empty string uses relative paths (works with nginx proxy in Docker)
+        // For standalone development, set to 'http://localhost:8000'
+        const API_BASE = window.location.port === '3000' ? 'http://localhost:8000' : '';
+        
+        // Icons as SVG components
+        const Icons = {
+            Scanner: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+                    <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                    <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+                    <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+                    <line x1="7" y1="12" x2="17" y2="12" />
+                </svg>
+            ),
+            Dashboard: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="7" height="9" />
+                    <rect x="14" y="3" width="7" height="5" />
+                    <rect x="14" y="12" width="7" height="9" />
+                    <rect x="3" y="16" width="7" height="5" />
+                </svg>
+            ),
+            Settings: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+            ),
+            Upload: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+            ),
+            Check: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                </svg>
+            ),
+            Alert: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+            ),
+            Shield: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+            ),
+            FileText: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                </svg>
+            ),
+            Trash: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+            ),
+            ArrowRight: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                    <polyline points="12 5 19 12 12 19" />
+                </svg>
+            ),
+            Admin: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+                    <path d="M19.622 10.395l-1.097-2.65L20 6l-2-2-1.735 1.483-2.707-1.113L12.935 2h-1.87l-.632 2.37-2.707 1.113L6 4 4 6l1.475 1.745-1.097 2.65L2 11.13v1.74l2.378.744 1.097 2.65L4 18l2 2 1.735-1.483 2.707 1.113L11.065 22h1.87l.632-2.37 2.707-1.113L18 20l2-2-1.475-1.745 1.097-2.65L22 12.87v-1.74l-2.378-.735Z" />
+                </svg>
+            ),
+            Key: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                </svg>
+            ),
+            Database: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <ellipse cx="12" cy="5" rx="9" ry="3" />
+                    <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+                    <path d="M3 12a9 3 0 0 0 18 0" />
+                </svg>
+            ),
+            Users: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+            ),
+            Cpu: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="16" height="16" x="4" y="4" rx="2" />
+                    <rect width="6" height="6" x="9" y="9" rx="1" />
+                    <path d="M15 2v2" /><path d="M15 20v2" />
+                    <path d="M2 15h2" /><path d="M2 9h2" />
+                    <path d="M20 15h2" /><path d="M20 9h2" />
+                    <path d="M9 2v2" /><path d="M9 20v2" />
+                </svg>
+            ),
+            Lock: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+            ),
+            History: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                    <path d="M12 7v5l4 2" />
+                </svg>
+            ),
+            Eye: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                </svg>
+            ),
+            EyeOff: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+            ),
+            RotateCw: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                    <path d="M21 3v5h-5" />
+                </svg>
+            ),
+            AlertTriangle: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                    <path d="M12 9v4" />
+                    <path d="M12 17h.01" />
+                </svg>
+            ),
+            Info: () => (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 16v-4" />
+                    <path d="M12 8h.01" />
+                </svg>
+            )
+        };
+        
+        // Utility functions
+        const getSeverityClass = (level) => {
+            const classes = {
+                'LOW': 'severity-low',
+                'MEDIUM': 'severity-medium',
+                'HIGH': 'severity-high',
+                'CRITICAL': 'severity-critical'
+            };
+            return classes[level] || 'severity-low';
+        };
+        
+        const getSeverityColor = (level) => {
+            const colors = {
+                'LOW': '#10b981',
+                'MEDIUM': '#f59e0b',
+                'HIGH': '#f97316',
+                'CRITICAL': '#ef4444'
+            };
+            return colors[level] || '#10b981';
+        };
+        
+        const getDimensionColor = (score) => {
+            if (score >= 80) return '#ef4444';
+            if (score >= 60) return '#f97316';
+            if (score >= 40) return '#f59e0b';
+            if (score >= 20) return '#00d4ff';
+            return '#10b981';
+        };
+        
+        const formatTimestamp = (ts) => {
+            const date = new Date(ts);
+            return date.toLocaleString();
+        };
+        
+        // Toast Component
+        const Toast = ({ message, type, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 4000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+            
+            return (
+                <div className={`toast toast-${type}`}>
+                    <span style={{ width: 20, height: 20 }}>
+                        {type === 'success' ? <Icons.Check /> : <Icons.Alert />}
+                    </span>
+                    <span>{message}</span>
+                </div>
+            );
+        };
+        
+        // Score Ring Component
+        const ScoreRing = ({ score, level }) => {
+            const circumference = 2 * Math.PI * 70;
+            const offset = circumference - (score / 100) * circumference;
+            const color = getSeverityColor(level);
+            
+            return (
+                <div className="score-ring">
+                    <svg width="180" height="180">
+                        <circle className="score-ring-bg" cx="90" cy="90" r="70" />
+                        <circle 
+                            className="score-ring-progress" 
+                            cx="90" 
+                            cy="90" 
+                            r="70"
+                            stroke={color}
+                            strokeDasharray={circumference}
+                            strokeDashoffset={offset}
+                        />
+                    </svg>
+                    <div className="score-value-container">
+                        <div className="score-number" style={{ color }}>{score}</div>
+                        <div className="score-label">{level}</div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Scanner Page
+        const ScannerPage = ({ addToast, onAnalysisComplete }) => {
+            const [inputMode, setInputMode] = useState('file');
+            const [textInput, setTextInput] = useState('');
+            const [dragOver, setDragOver] = useState(false);
+            const [loading, setLoading] = useState(false);
+            const [result, setResult] = useState(null);
+
+            // Upload progress and processing stage tracking
+            const [uploadProgress, setUploadProgress] = useState({
+                stage: 'idle', // 'idle' | 'uploading' | 'processing' | 'analyzing'
+                percent: 0,
+                filename: '',
+                filesize: '',
+                bytesUploaded: 0,
+                bytesTotal: 0
+            });
+
+            // FR-004: Oversized file modal state
+            const [oversizedModal, setOversizedModal] = useState({
+                open: false,
+                filename: '',
+                filesize: 0,
+                filesizeDisplay: ''
+            });
+            const MAX_FILE_SIZE_GB = 10;
+            const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_GB * 1024 * 1024 * 1024;
+
+            // Format file size for display
+            const formatFileSize = (bytes) => {
+                if (bytes >= 1024 * 1024 * 1024) {
+                    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+                } else if (bytes >= 1024 * 1024) {
+                    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+                } else if (bytes >= 1024) {
+                    return `${(bytes / 1024).toFixed(2)} KB`;
+                }
+                return `${bytes} bytes`;
+            };
+
+            // FR-004: Handle acknowledgment of oversized file
+            const handleOversizedAcknowledge = async () => {
+                try {
+                    await fetch(`${API_BASE}/api/log/oversized-file`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            filename: oversizedModal.filename,
+                            filesize_bytes: oversizedModal.filesize,
+                            filesize_display: oversizedModal.filesizeDisplay,
+                            user_acknowledged: true
+                        })
+                    });
+                    addToast('Your acknowledgment has been logged. Please contact IT for assistance.', 'info');
+                } catch (err) {
+                    console.error('Failed to log acknowledgment:', err);
+                }
+                setOversizedModal({ open: false, filename: '', filesize: 0, filesizeDisplay: '' });
+            };
+            
+            const analyzeText = async (text, filename = 'pasted-text.txt', filetype = 'txt', filesize = `${text.length} bytes`) => {
+                setLoading(true);
+                try {
+                    const response = await fetch(`${API_BASE}/api/analyze/text`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            document_text: text,
+                            filename,
+                            filetype,
+                            filesize
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Analysis failed');
+                    }
+                    
+                    const data = await response.json();
+                    setResult(data);
+                    onAnalysisComplete();
+                    addToast(`Analysis complete: ${data.sensitivity_level}`, 'success');
+                } catch (err) {
+                    addToast(err.message, 'error');
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            const analyzeFile = async (file) => {
+                setLoading(true);
+                const fileSizeDisplay = formatFileSize(file.size);
+
+                // Initialize progress tracking
+                setUploadProgress({
+                    stage: 'uploading',
+                    percent: 0,
+                    filename: file.name,
+                    filesize: fileSizeDisplay,
+                    bytesUploaded: 0,
+                    bytesTotal: file.size
+                });
+
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    // Use XMLHttpRequest for upload progress tracking
+                    const result = await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+
+                        // Track upload progress
+                        xhr.upload.addEventListener('progress', (e) => {
+                            if (e.lengthComputable) {
+                                const percent = Math.round((e.loaded / e.total) * 100);
+                                setUploadProgress(prev => ({
+                                    ...prev,
+                                    stage: 'uploading',
+                                    percent: percent,
+                                    bytesUploaded: e.loaded,
+                                    bytesTotal: e.total
+                                }));
+                            }
+                        });
+
+                        // Upload complete - now processing on server
+                        xhr.upload.addEventListener('load', () => {
+                            setUploadProgress(prev => ({
+                                ...prev,
+                                stage: 'processing',
+                                percent: 100
+                            }));
+                        });
+
+                        // Handle response
+                        xhr.addEventListener('load', () => {
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                try {
+                                    const data = JSON.parse(xhr.responseText);
+                                    resolve(data);
+                                } catch (e) {
+                                    reject(new Error('Invalid response from server'));
+                                }
+                            } else {
+                                try {
+                                    const error = JSON.parse(xhr.responseText);
+                                    reject(new Error(error.detail || `Analysis failed (${xhr.status})`));
+                                } catch (e) {
+                                    reject(new Error(`Analysis failed with status ${xhr.status}`));
+                                }
+                            }
+                        });
+
+                        xhr.addEventListener('error', () => {
+                            reject(new Error('Network error - please check your connection'));
+                        });
+
+                        xhr.addEventListener('timeout', () => {
+                            reject(new Error('Request timed out - file may be too large'));
+                        });
+
+                        // Start analyzing stage when we're waiting for AI response
+                        xhr.addEventListener('readystatechange', () => {
+                            if (xhr.readyState === 3) { // LOADING - receiving response
+                                setUploadProgress(prev => ({
+                                    ...prev,
+                                    stage: 'analyzing'
+                                }));
+                            }
+                        });
+
+                        // Set timeout to 10 minutes for large files
+                        xhr.timeout = 600000;
+
+                        xhr.open('POST', `${API_BASE}/api/analyze/file`);
+                        xhr.send(formData);
+                    });
+
+                    setResult(result);
+                    onAnalysisComplete();
+                    addToast(`Analysis complete: ${result.sensitivity_level}`, 'success');
+                } catch (err) {
+                    addToast(err.message, 'error');
+                } finally {
+                    setLoading(false);
+                    setUploadProgress({
+                        stage: 'idle',
+                        percent: 0,
+                        filename: '',
+                        filesize: '',
+                        bytesUploaded: 0,
+                        bytesTotal: 0
+                    });
+                }
+            };
+
+            const handleFileDrop = async (e) => {
+                e.preventDefault();
+                setDragOver(false);
+
+                const file = e.dataTransfer?.files[0] || e.target.files?.[0];
+                if (!file) return;
+
+                // FR-004: Immediate file size check with non-blocking UI update
+                // Use requestAnimationFrame to prevent browser hanging on very large files
+                requestAnimationFrame(() => {
+                    // Check file size FIRST before any processing (max 10GB)
+                    if (file.size > MAX_FILE_SIZE_BYTES) {
+                        const sizeDisplay = formatFileSize(file.size);
+                        setOversizedModal({
+                            open: true,
+                            filename: file.name,
+                            filesize: file.size,
+                            filesizeDisplay: sizeDisplay
+                        });
+                        return;
+                    }
+
+                    // FR-001: Universal file type support - all types go through file endpoint
+                    // Backend handles: PDF, DOCX, XLSX, PPTX, images (OCR), text files, and more
+                    const supportedTypes = [
+                        // Text files
+                        'txt', 'csv', 'json', 'xml', 'html', 'htm', 'md', 'markdown',
+                        'log', 'py', 'js', 'ts', 'jsx', 'tsx', 'java', 'c', 'cpp', 'h',
+                        'cs', 'go', 'rs', 'rb', 'php', 'sh', 'bash', 'sql', 'css', 'scss',
+                        'yaml', 'yml', 'ini', 'conf', 'cfg', 'toml', 'env',
+                        // Documents
+                        'pdf', 'docx', 'doc', 'rtf', 'odt',
+                        // Spreadsheets
+                        'xlsx', 'xls', 'ods',
+                        // Presentations
+                        'pptx', 'ppt', 'odp',
+                        // Images (OCR)
+                        'png', 'jpg', 'jpeg', 'tiff', 'tif', 'bmp', 'gif', 'webp',
+                        // Email
+                        'eml', 'msg'
+                    ];
+                    const ext = file.name.split('.').pop()?.toLowerCase();
+
+                    // All supported types go through file endpoint for proper processing
+                    analyzeFile(file);
+                });
+            };
+            
+            const handleSubmit = () => {
+                if (textInput.trim()) {
+                    analyzeText(textInput);
+                }
+            };
+            
+            const dimensionLabels = {
+                pii: 'PII (Personal Identifiable Info)',
+                financial: 'Financial Information',
+                strategic_business: 'Strategic Business',
+                intellectual_property: 'Intellectual Property',
+                legal_compliance: 'Legal & Compliance',
+                operational_security: 'Operational Security',
+                hr_employee: 'HR & Employee Data'
+            };
+            
+            return (
+                <div>
+                    <div className="page-header">
+                        <h1 className="page-title">Document Scanner</h1>
+                        <p className="page-subtitle">Upload or paste documents to analyze for sensitive information</p>
+                    </div>
+                    
+                    {loading && (
+                        <div className="loading-overlay">
+                            <div style={{ textAlign: 'center', maxWidth: '500px', padding: '32px' }}>
+                                {/* File info */}
+                                {uploadProgress.filename && (
+                                    <div style={{ marginBottom: '24px' }}>
+                                        <div style={{
+                                            fontFamily: 'JetBrains Mono',
+                                            fontSize: '14px',
+                                            color: 'var(--text-secondary)',
+                                            marginBottom: '4px'
+                                        }}>
+                                            {uploadProgress.filename}
+                                        </div>
+                                        <div style={{
+                                            fontFamily: 'JetBrains Mono',
+                                            fontSize: '12px',
+                                            color: 'var(--text-muted)'
+                                        }}>
+                                            {uploadProgress.filesize}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Stage indicator */}
+                                <div style={{ marginBottom: '24px' }}>
+                                    <div className="loading-spinner"></div>
+                                    <div className="loading-text" style={{ marginTop: '16px' }}>
+                                        {uploadProgress.stage === 'uploading' && (
+                                            <>Uploading file... {uploadProgress.percent}%</>
+                                        )}
+                                        {uploadProgress.stage === 'processing' && (
+                                            <>Processing document (text extraction)...</>
+                                        )}
+                                        {uploadProgress.stage === 'analyzing' && (
+                                            <>Analyzing with Claude AI...</>
+                                        )}
+                                        {uploadProgress.stage === 'idle' && (
+                                            <>Preparing...</>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Progress bar for upload */}
+                                {uploadProgress.stage === 'uploading' && (
+                                    <div style={{ marginBottom: '16px' }}>
+                                        <div style={{
+                                            width: '100%',
+                                            height: '8px',
+                                            backgroundColor: 'var(--bg-tertiary)',
+                                            borderRadius: '4px',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <div style={{
+                                                width: `${uploadProgress.percent}%`,
+                                                height: '100%',
+                                                backgroundColor: 'var(--accent-cyan)',
+                                                borderRadius: '4px',
+                                                transition: 'width 0.3s ease'
+                                            }}></div>
+                                        </div>
+                                        <div style={{
+                                            fontFamily: 'JetBrains Mono',
+                                            fontSize: '11px',
+                                            color: 'var(--text-muted)',
+                                            marginTop: '8px'
+                                        }}>
+                                            {formatFileSize(uploadProgress.bytesUploaded)} / {formatFileSize(uploadProgress.bytesTotal)}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Stage steps indicator */}
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    marginTop: '24px'
+                                }}>
+                                    <div style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '4px',
+                                        fontSize: '11px',
+                                        fontWeight: '500',
+                                        backgroundColor: uploadProgress.stage === 'uploading' ? 'var(--accent-cyan)' :
+                                            (uploadProgress.stage === 'processing' || uploadProgress.stage === 'analyzing') ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+                                        color: uploadProgress.stage === 'uploading' ? 'black' :
+                                            (uploadProgress.stage === 'processing' || uploadProgress.stage === 'analyzing') ? 'black' : 'var(--text-muted)'
+                                    }}>
+                                        1. Upload {(uploadProgress.stage === 'processing' || uploadProgress.stage === 'analyzing') && '✓'}
+                                    </div>
+                                    <div style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '4px',
+                                        fontSize: '11px',
+                                        fontWeight: '500',
+                                        backgroundColor: uploadProgress.stage === 'processing' ? 'var(--accent-cyan)' :
+                                            uploadProgress.stage === 'analyzing' ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+                                        color: uploadProgress.stage === 'processing' ? 'black' :
+                                            uploadProgress.stage === 'analyzing' ? 'black' : 'var(--text-muted)'
+                                    }}>
+                                        2. Process {uploadProgress.stage === 'analyzing' && '✓'}
+                                    </div>
+                                    <div style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '4px',
+                                        fontSize: '11px',
+                                        fontWeight: '500',
+                                        backgroundColor: uploadProgress.stage === 'analyzing' ? 'var(--accent-cyan)' : 'var(--bg-tertiary)',
+                                        color: uploadProgress.stage === 'analyzing' ? 'black' : 'var(--text-muted)'
+                                    }}>
+                                        3. Analyze
+                                    </div>
+                                </div>
+
+                                {/* Helpful message for large files */}
+                                {uploadProgress.bytesTotal > 100 * 1024 * 1024 && (
+                                    <div style={{
+                                        marginTop: '24px',
+                                        padding: '12px',
+                                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                                        border: '1px solid var(--accent-yellow)',
+                                        borderRadius: '8px',
+                                        fontSize: '12px',
+                                        color: 'var(--accent-yellow)'
+                                    }}>
+                                        Large file detected. This may take several minutes to process.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* FR-004: Oversized File Modal */}
+                    {oversizedModal.open && (
+                        <div className="loading-overlay" style={{ backgroundColor: 'rgba(0, 0, 0, 0.85)' }}>
+                            <div className="card" style={{
+                                maxWidth: '500px',
+                                margin: '0 auto',
+                                textAlign: 'center',
+                                padding: '32px'
+                            }}>
+                                <div style={{ marginBottom: '24px' }}>
+                                    <Icons.AlertTriangle style={{ width: '64px', height: '64px', color: 'var(--accent-red)' }} />
+                                </div>
+                                <h2 style={{ color: 'var(--accent-red)', marginBottom: '16px' }}>
+                                    File Too Large
+                                </h2>
+                                <p style={{ marginBottom: '16px', color: 'var(--text-secondary)' }}>
+                                    The file you selected exceeds the maximum allowed size.
+                                </p>
+                                <div style={{
+                                    backgroundColor: 'var(--bg-tertiary)',
+                                    padding: '16px',
+                                    borderRadius: '8px',
+                                    marginBottom: '24px'
+                                }}>
+                                    <div style={{ fontFamily: 'JetBrains Mono', marginBottom: '8px' }}>
+                                        <strong>Filename:</strong> {oversizedModal.filename}
+                                    </div>
+                                    <div style={{ fontFamily: 'JetBrains Mono', marginBottom: '8px' }}>
+                                        <strong>File Size:</strong> <span style={{ color: 'var(--accent-red)' }}>{oversizedModal.filesizeDisplay}</span>
+                                    </div>
+                                    <div style={{ fontFamily: 'JetBrains Mono' }}>
+                                        <strong>Maximum Allowed:</strong> {MAX_FILE_SIZE_GB} GB
+                                    </div>
+                                </div>
+                                <div style={{
+                                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                    border: '1px solid var(--accent-yellow)',
+                                    padding: '16px',
+                                    borderRadius: '8px',
+                                    marginBottom: '24px',
+                                    textAlign: 'left'
+                                }}>
+                                    <p style={{ color: 'var(--accent-yellow)', fontWeight: '600', marginBottom: '8px' }}>
+                                        Action Required:
+                                    </p>
+                                    <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+                                        Please contact the IT Security team for assistance with processing files larger than 10GB.
+                                        They can provide alternative methods for secure analysis of large documents.
+                                    </p>
+                                </div>
+                                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '24px' }}>
+                                    By clicking "I Acknowledge", this attempt will be logged for audit purposes.
+                                </p>
+                                <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={() => setOversizedModal({ open: false, filename: '', filesize: 0, filesizeDisplay: '' })}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={handleOversizedAcknowledge}
+                                        style={{ backgroundColor: 'var(--accent-red)' }}
+                                    >
+                                        I Acknowledge - Contact IT
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {!result ? (
+                        <div className="card">
+                            <div className="tabs">
+                                <div 
+                                    className={`tab ${inputMode === 'file' ? 'active' : ''}`}
+                                    onClick={() => setInputMode('file')}
+                                >
+                                    Upload File
+                                </div>
+                                <div 
+                                    className={`tab ${inputMode === 'text' ? 'active' : ''}`}
+                                    onClick={() => setInputMode('text')}
+                                >
+                                    Paste Text
+                                </div>
+                            </div>
+                            
+                            {inputMode === 'file' ? (
+                                <div 
+                                    className={`upload-zone ${dragOver ? 'dragover' : ''}`}
+                                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                                    onDragLeave={() => setDragOver(false)}
+                                    onDrop={handleFileDrop}
+                                    onClick={() => document.getElementById('file-input').click()}
+                                >
+                                    <div className="upload-icon">
+                                        <Icons.Upload />
+                                    </div>
+                                    <div className="upload-text">Drop file here or click to browse</div>
+                                    <div className="upload-hint">Supports: PDF, DOCX, XLSX, PPTX, Images (OCR), TXT, CSV, JSON, XML, and more (max 10GB)</div>
+                                    <input
+                                        type="file"
+                                        id="file-input"
+                                        style={{ display: 'none' }}
+                                        onChange={handleFileDrop}
+                                        accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.rtf,.odt,.ods,.odp,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.gif,.webp,.eml,.msg,.txt,.csv,.json,.xml,.html,.htm,.md,.log,.py,.js,.ts,.jsx,.tsx,.java,.yaml,.yml,.ini,.conf,.cfg,.sql,.css"
+                                    />
+                                </div>
+                            ) : (
+                                <div>
+                                    <textarea 
+                                        className="text-input-area"
+                                        placeholder="Paste document content here..."
+                                        value={textInput}
+                                        onChange={(e) => setTextInput(e.target.value)}
+                                    />
+                                    <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                                        <button 
+                                            className="btn btn-primary" 
+                                            onClick={handleSubmit}
+                                            disabled={!textInput.trim()}
+                                        >
+                                            <Icons.Scanner /> Analyze Document
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div>
+                            <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h2 style={{ fontSize: 20, fontWeight: 600 }}>Analysis Results</h2>
+                                <button className="btn btn-secondary" onClick={() => { setResult(null); setTextInput(''); }}>
+                                    Scan Another Document
+                                </button>
+                            </div>
+
+                            {/* Large file sampling notice */}
+                            {result._sampling_notice && (
+                                <div style={{
+                                    marginBottom: 20,
+                                    padding: '12px 16px',
+                                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                                    borderRadius: 8,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 12
+                                }}>
+                                    <Icons.Info style={{ width: 20, height: 20, color: '#3b82f6', flexShrink: 0 }} />
+                                    <div style={{ fontSize: 13, color: '#3b82f6' }}>
+                                        <strong>Large File Notice:</strong> {result._sampling_notice}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="results-container">
+                                <div className="card">
+                                    <div className="card-title" style={{ marginBottom: 24 }}>Overall Assessment</div>
+                                    <ScoreRing score={result.overall_sensitivity_score} level={result.sensitivity_level} />
+                                    <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                                        <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8 }}>
+                                            Confidence: {(result.confidence * 100).toFixed(0)}%
+                                        </div>
+                                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: 'var(--text-secondary)' }}>
+                                            {result.filename}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="card-title" style={{ marginBottom: 16 }}>Dimension Scores</div>
+                                    {Object.entries(result.dimension_scores).map(([key, value]) => (
+                                        <div className="dimension-item" key={key}>
+                                            <div className="dimension-header">
+                                                <span className="dimension-name">{dimensionLabels[key] || key}</span>
+                                                <span className="dimension-score" style={{ color: getDimensionColor(value) }}>{value}</span>
+                                            </div>
+                                            <div className="dimension-bar">
+                                                <div 
+                                                    className="dimension-bar-fill" 
+                                                    style={{ 
+                                                        width: `${value}%`,
+                                                        background: getDimensionColor(value)
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                <div>
+                                    <div className="card">
+                                        <div className="card-title" style={{ marginBottom: 16 }}>Department Relevance</div>
+                                        <div className="dept-grid">
+                                            {Object.entries(result.department_relevance).map(([dept, level]) => (
+                                                <div className="dept-item" key={dept}>
+                                                    <span className="dept-name">{dept.replace('_', '/')}</span>
+                                                    <span className={`severity-badge ${getSeverityClass(level)}`}>{level}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    
+                                    {result.regulatory_concerns?.length > 0 && result.regulatory_concerns[0] !== 'NONE' && (
+                                        <div className="card">
+                                            <div className="card-title" style={{ marginBottom: 16 }}>Regulatory Concerns</div>
+                                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                                {result.regulatory_concerns.map((reg, i) => (
+                                                    <span key={i} className="severity-badge severity-high">{reg}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    <div className="card">
+                                        <div className="card-title" style={{ marginBottom: 16 }}>Recommended Actions</div>
+                                        {result.recommended_actions?.map((action, i) => (
+                                            <div className="action-item" key={i}>
+                                                <span className="action-icon"><Icons.ArrowRight /></span>
+                                                <span className="action-text">{action}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {result.findings?.length > 0 && (
+                                <div className="card">
+                                    <div className="card-title" style={{ marginBottom: 16 }}>Detailed Findings</div>
+                                    {result.findings.map((finding, i) => (
+                                        <div className="finding-item" key={i}>
+                                            <div className="finding-header">
+                                                <span className="finding-category">{finding.category}</span>
+                                                <span className={`severity-badge ${getSeverityClass(finding.severity)}`}>
+                                                    {finding.severity} × {finding.count}
+                                                </span>
+                                            </div>
+                                            <div className="finding-description">{finding.description}</div>
+                                            {finding.examples?.length > 0 && (
+                                                <div className="finding-examples">
+                                                    {finding.examples.map((ex, j) => (
+                                                        <span className="example-tag" key={j}>{ex}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            
+                            {result.reasoning && (
+                                <div className="card">
+                                    <div className="card-title" style={{ marginBottom: 16 }}>Analysis Reasoning</div>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.7 }}>
+                                        {result.reasoning}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
+        // Dashboard Page
+        const DashboardPage = ({ refreshKey }) => {
+            const [stats, setStats] = useState(null);
+            const [incidents, setIncidents] = useState([]);
+            const [loading, setLoading] = useState(true);
+            
+            useEffect(() => {
+                loadData();
+            }, [refreshKey]);
+            
+            const loadData = async () => {
+                try {
+                    const [statsRes, incidentsRes] = await Promise.all([
+                        fetch(`${API_BASE}/api/stats`),
+                        fetch(`${API_BASE}/api/incidents?limit=20`)
+                    ]);
+                    
+                    if (statsRes.ok) setStats(await statsRes.json());
+                    if (incidentsRes.ok) {
+                        const data = await incidentsRes.json();
+                        setIncidents(data.incidents || []);
+                    }
+                } catch (err) {
+                    console.error('Failed to load dashboard data:', err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            if (loading) {
+                return (
+                    <div>
+                        <div className="page-header">
+                            <h1 className="page-title">Dashboard</h1>
+                        </div>
+                        <div className="loading-spinner"></div>
+                    </div>
+                );
+            }
+            
+            return (
+                <div>
+                    <div className="page-header">
+                        <h1 className="page-title">Dashboard</h1>
+                        <p className="page-subtitle">Security incident overview and analytics</p>
+                    </div>
+                    
+                    <div className="stats-grid">
+                        <div className="stat-card" style={{ '--stat-color': 'var(--accent-cyan)' }}>
+                            <div className="stat-value">{stats?.total_scans || 0}</div>
+                            <div className="stat-label">Total Scans</div>
+                        </div>
+                        <div className="stat-card" style={{ '--stat-color': 'var(--accent-red)' }}>
+                            <div className="stat-value">{stats?.by_severity?.CRITICAL || 0}</div>
+                            <div className="stat-label">Critical Alerts</div>
+                        </div>
+                        <div className="stat-card" style={{ '--stat-color': 'var(--accent-orange)' }}>
+                            <div className="stat-value">{stats?.by_severity?.HIGH || 0}</div>
+                            <div className="stat-label">High Risk</div>
+                        </div>
+                        <div className="stat-card" style={{ '--stat-color': 'var(--accent-purple)' }}>
+                            <div className="stat-value">{stats?.avg_score || 0}</div>
+                            <div className="stat-label">Avg. Score</div>
+                        </div>
+                    </div>
+                    
+                    <div className="card">
+                        <div className="card-header">
+                            <span className="card-title">Recent Incidents</span>
+                        </div>
+                        
+                        {incidents.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-icon"><Icons.Shield /></div>
+                                <div>No incidents recorded yet</div>
+                                <div style={{ fontSize: 13, marginTop: 8 }}>Scan a document to see results here</div>
+                            </div>
+                        ) : (
+                            <table className="incidents-table">
+                                <thead>
+                                    <tr>
+                                        <th>File</th>
+                                        <th>Severity</th>
+                                        <th>Score</th>
+                                        <th>Categories</th>
+                                        <th>Departments</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {incidents.map((incident) => (
+                                        <tr key={incident.id}>
+                                            <td className="filename-cell">{incident.filename}</td>
+                                            <td>
+                                                <span className={`severity-badge ${getSeverityClass(incident.sensitivity_level)}`}>
+                                                    {incident.sensitivity_level}
+                                                </span>
+                                            </td>
+                                            <td style={{ fontFamily: "'JetBrains Mono', monospace" }}>{incident.overall_score}</td>
+                                            <td>
+                                                {incident.top_categories?.slice(0, 2).map((cat, i) => (
+                                                    <span key={i} className="example-tag" style={{ marginRight: 4 }}>{cat}</span>
+                                                ))}
+                                            </td>
+                                            <td>
+                                                {incident.departments_affected?.slice(0, 2).map((dept, i) => (
+                                                    <span key={i} style={{ marginRight: 8, color: 'var(--text-secondary)', fontSize: 12 }}>{dept}</span>
+                                                ))}
+                                            </td>
+                                            <td className="timestamp-cell">{formatTimestamp(incident.timestamp)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                    
+                    {stats?.by_category && Object.keys(stats.by_category).length > 0 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                            <div className="card">
+                                <div className="card-title" style={{ marginBottom: 16 }}>By Category</div>
+                                {Object.entries(stats.by_category).sort((a, b) => b[1] - a[1]).map(([cat, count]) => (
+                                    <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
+                                        <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{cat}</span>
+                                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 14 }}>{count}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="card">
+                                <div className="card-title" style={{ marginBottom: 16 }}>By Department</div>
+                                {Object.entries(stats.by_department).sort((a, b) => b[1] - a[1]).map(([dept, count]) => (
+                                    <div key={dept} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
+                                        <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{dept}</span>
+                                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 14 }}>{count}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
+        // Settings Page
+        const SettingsPage = ({ addToast }) => {
+            const [settings, setSettings] = useState({
+                api_key: '',
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 4096,
+                auto_delete_uploads: true,
+                retention_days: 30
+            });
+            const [models, setModels] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [testing, setTesting] = useState(false);
+            const [apiKeyInput, setApiKeyInput] = useState('');
+            
+            useEffect(() => {
+                loadSettings();
+            }, []);
+            
+            const loadSettings = async () => {
+                try {
+                    const [settingsRes, modelsRes] = await Promise.all([
+                        fetch(`${API_BASE}/api/settings`),
+                        fetch(`${API_BASE}/api/models`)
+                    ]);
+                    
+                    if (settingsRes.ok) {
+                        const data = await settingsRes.json();
+                        setSettings(data);
+                    }
+                    if (modelsRes.ok) {
+                        const data = await modelsRes.json();
+                        setModels(data.models || []);
+                    }
+                } catch (err) {
+                    addToast('Failed to load settings', 'error');
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            const saveSettings = async () => {
+                try {
+                    const payload = { ...settings };
+                    if (apiKeyInput) {
+                        payload.api_key = apiKeyInput;
+                    }
+                    
+                    const res = await fetch(`${API_BASE}/api/settings`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    if (res.ok) {
+                        addToast('Settings saved successfully', 'success');
+                        setApiKeyInput('');
+                        loadSettings();
+                    } else {
+                        throw new Error('Failed to save');
+                    }
+                } catch (err) {
+                    addToast('Failed to save settings', 'error');
+                }
+            };
+            
+            const testConnection = async () => {
+                setTesting(true);
+                try {
+                    const res = await fetch(`${API_BASE}/api/settings/test`, {
+                        method: 'POST'
+                    });
+                    
+                    if (res.ok) {
+                        addToast('API connection successful!', 'success');
+                    } else {
+                        const error = await res.json();
+                        throw new Error(error.detail);
+                    }
+                } catch (err) {
+                    addToast(err.message, 'error');
+                } finally {
+                    setTesting(false);
+                }
+            };
+            
+            const clearIncidents = async () => {
+                if (!confirm('Are you sure you want to clear all incidents?')) return;
+                
+                try {
+                    const res = await fetch(`${API_BASE}/api/incidents`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (res.ok) {
+                        addToast('All incidents cleared', 'success');
+                    }
+                } catch (err) {
+                    addToast('Failed to clear incidents', 'error');
+                }
+            };
+            
+            if (loading) {
+                return (
+                    <div>
+                        <div className="page-header">
+                            <h1 className="page-title">Settings</h1>
+                        </div>
+                        <div className="loading-spinner"></div>
+                    </div>
+                );
+            }
+            
+            return (
+                <div>
+                    <div className="page-header">
+                        <h1 className="page-title">Settings</h1>
+                        <p className="page-subtitle">Configure API connection and application preferences</p>
+                    </div>
+                    
+                    <div className="card">
+                        <div className="card-title" style={{ marginBottom: 24 }}>Claude API Configuration</div>
+                        
+                        <div className="form-group">
+                            <label className="form-label">API Key</label>
+                            <input 
+                                type="password"
+                                className="form-input"
+                                placeholder={settings.api_key_set ? '••••••••••••••••' : 'Enter your Anthropic API key'}
+                                value={apiKeyInput}
+                                onChange={(e) => setApiKeyInput(e.target.value)}
+                            />
+                            {settings.api_key_set && (
+                                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--accent-green)' }}>
+                                    ✓ API key configured: {settings.api_key}
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="form-group">
+                            <label className="form-label">Model</label>
+                            <select 
+                                className="form-input form-select"
+                                value={settings.model}
+                                onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+                            >
+                                {models.map((m) => (
+                                    <option key={m.id} value={m.id}>{m.name} - {m.description}</option>
+                                ))}
+                            </select>
+                        </div>
+                        
+                        <div className="form-group">
+                            <label className="form-label">Max Tokens</label>
+                            <input 
+                                type="number"
+                                className="form-input"
+                                value={settings.max_tokens}
+                                onChange={(e) => setSettings({ ...settings, max_tokens: parseInt(e.target.value) })}
+                                min="1000"
+                                max="8192"
+                            />
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                            <button className="btn btn-primary" onClick={saveSettings}>
+                                Save Settings
+                            </button>
+                            <button 
+                                className="btn btn-secondary" 
+                                onClick={testConnection}
+                                disabled={testing || !settings.api_key_set}
+                            >
+                                {testing ? 'Testing...' : 'Test Connection'}
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="card">
+                        <div className="card-title" style={{ marginBottom: 24 }}>Data Management</div>
+                        
+                        <div className="form-group">
+                            <label className="form-label">Retention Period (Days)</label>
+                            <input 
+                                type="number"
+                                className="form-input"
+                                value={settings.retention_days}
+                                onChange={(e) => setSettings({ ...settings, retention_days: parseInt(e.target.value) })}
+                                min="1"
+                                max="365"
+                            />
+                        </div>
+                        
+                        <div style={{ marginTop: 24 }}>
+                            <button className="btn btn-danger" onClick={clearIncidents}>
+                                <Icons.Trash /> Clear All Incidents
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Admin Configuration Page (FR-002)
+        const AdminPage = ({ addToast }) => {
+            const [config, setConfig] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [activeTab, setActiveTab] = useState('llm');
+            const [auditLog, setAuditLog] = useState([]);
+            const [showSecrets, setShowSecrets] = useState({});
+            const [editedConfig, setEditedConfig] = useState({});
+            const [hasChanges, setHasChanges] = useState(false);
+            const [testing, setTesting] = useState(null);
+            
+            useEffect(() => {
+                loadConfig();
+                loadAuditLog();
+            }, []);
+            
+            const loadConfig = async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/admin/config`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setConfig(data);
+                        setEditedConfig(JSON.parse(JSON.stringify(data)));
+                    }
+                } catch (error) {
+                    addToast('Failed to load configuration', 'error');
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            const loadAuditLog = async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/admin/config/audit?limit=50`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setAuditLog(data.entries || []);
+                    }
+                } catch (error) {
+                    console.error('Failed to load audit log');
+                }
+            };
+            
+            const saveConfig = async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/admin/config`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(editedConfig)
+                    });
+                    
+                    if (response.ok) {
+                        addToast('Configuration saved successfully', 'success');
+                        setHasChanges(false);
+                        loadConfig();
+                        loadAuditLog();
+                    } else {
+                        const error = await response.json();
+                        addToast(error.detail || 'Failed to save configuration', 'error');
+                    }
+                } catch (error) {
+                    addToast('Failed to save configuration', 'error');
+                }
+            };
+            
+            const testConnection = async (category) => {
+                setTesting(category);
+                try {
+                    const response = await fetch(`${API_BASE}/api/admin/config/test?category=${category}`, {
+                        method: 'POST'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        addToast(`${category.toUpperCase()} connection verified`, 'success');
+                    } else {
+                        addToast(data.detail || `${category.toUpperCase()} connection failed`, 'error');
+                    }
+                } catch (error) {
+                    addToast(`${category.toUpperCase()} connection test failed`, 'error');
+                } finally {
+                    setTesting(null);
+                }
+            };
+            
+            const rotateKey = async () => {
+                if (!confirm('Are you sure you want to rotate the encryption key? This will re-encrypt all secrets.')) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`${API_BASE}/api/admin/config/rotate-key`, {
+                        method: 'POST'
+                    });
+                    
+                    if (response.ok) {
+                        addToast('Encryption key rotated successfully', 'success');
+                        loadAuditLog();
+                    } else {
+                        addToast('Failed to rotate encryption key', 'error');
+                    }
+                } catch (error) {
+                    addToast('Failed to rotate encryption key', 'error');
+                }
+            };
+            
+            const updateField = (category, field, value) => {
+                setEditedConfig(prev => ({
+                    ...prev,
+                    [category]: {
+                        ...prev[category],
+                        [field]: value
+                    }
+                }));
+                setHasChanges(true);
+            };
+            
+            const toggleSecret = (field) => {
+                setShowSecrets(prev => ({ ...prev, [field]: !prev[field] }));
+            };
+            
+            const renderSecretField = (category, field, label, placeholder) => {
+                const value = editedConfig?.[category]?.[field] || '';
+                const isSet = config?.[category]?.[`${field}_set`];
+                const showKey = `${category}.${field}`;
+                
+                return (
+                    <div className="form-group">
+                        <label className="form-label">{label}</label>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <input 
+                                type={showSecrets[showKey] ? 'text' : 'password'}
+                                className="form-input"
+                                style={{ flex: 1 }}
+                                placeholder={isSet ? '••••••••' : placeholder}
+                                value={value}
+                                onChange={(e) => updateField(category, field, e.target.value)}
+                            />
+                            <button 
+                                className="btn btn-secondary"
+                                style={{ padding: '8px 12px' }}
+                                onClick={() => toggleSecret(showKey)}
+                            >
+                                {showSecrets[showKey] ? <Icons.EyeOff /> : <Icons.Eye />}
+                            </button>
+                        </div>
+                        {isSet && !value && (
+                            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--accent-green)' }}>
+                                ✓ Configured (leave empty to keep current)
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+            
+            const tabs = [
+                { id: 'llm', label: 'LLM Provider', icon: <Icons.Cpu /> },
+                { id: 'elasticsearch', label: 'Elasticsearch', icon: <Icons.Database /> },
+                { id: 'active_directory', label: 'Active Directory', icon: <Icons.Users /> },
+                { id: 'processing', label: 'Processing', icon: <Icons.Settings /> },
+                { id: 'security', label: 'Security', icon: <Icons.Lock /> },
+                { id: 'audit', label: 'Audit Log', icon: <Icons.History /> }
+            ];
+            
+            if (loading) {
+                return (
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+                        <div style={{ color: 'var(--text-secondary)' }}>Loading configuration...</div>
+                    </div>
+                );
+            }
+            
+            return (
+                <div>
+                    <div className="page-header">
+                        <h1 className="page-title">Admin Configuration</h1>
+                        <p className="page-subtitle">Manage system configuration and security settings</p>
+                    </div>
+                    
+                    {hasChanges && (
+                        <div style={{ 
+                            background: 'var(--glow-cyan)', 
+                            border: '1px solid var(--accent-cyan)',
+                            borderRadius: 8,
+                            padding: '12px 16px',
+                            marginBottom: 24,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                        }}>
+                            <span style={{ color: 'var(--accent-cyan)' }}>
+                                ⚠️ You have unsaved changes
+                            </span>
+                            <button className="btn btn-primary" onClick={saveConfig}>
+                                Save Changes
+                            </button>
+                        </div>
+                    )}
+                    
+                    {/* Tab Navigation */}
+                    <div style={{ 
+                        display: 'flex', 
+                        gap: 8, 
+                        marginBottom: 24,
+                        borderBottom: '1px solid var(--border-color)',
+                        paddingBottom: 16
+                    }}>
+                        {tabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                className={`btn ${activeTab === tab.id ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => setActiveTab(tab.id)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                            >
+                                <span style={{ width: 16, height: 16 }}>{tab.icon}</span>
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+                    
+                    {/* LLM Provider Tab */}
+                    {activeTab === 'llm' && (
+                        <div className="card">
+                            <div className="card-title" style={{ marginBottom: 24 }}>
+                                LLM Provider Configuration
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Provider</label>
+                                <select 
+                                    className="form-select"
+                                    value={editedConfig?.llm?.provider || 'claude_api'}
+                                    onChange={(e) => updateField('llm', 'provider', e.target.value)}
+                                >
+                                    <option value="claude_api">Claude API (Anthropic)</option>
+                                    <option value="ollama">Ollama (Local)</option>
+                                    <option value="vllm">vLLM (Local)</option>
+                                </select>
+                            </div>
+                            
+                            {editedConfig?.llm?.provider === 'claude_api' && (
+                                <>
+                                    {renderSecretField('llm', 'claude_api_key', 'Claude API Key', 'sk-ant-...')}
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Model</label>
+                                        <select 
+                                            className="form-select"
+                                            value={editedConfig?.llm?.claude_model || 'claude-sonnet-4-20250514'}
+                                            onChange={(e) => updateField('llm', 'claude_model', e.target.value)}
+                                        >
+                                            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                                            <option value="claude-opus-4-20250514">Claude Opus 4</option>
+                                            <option value="claude-haiku-4-20250514">Claude Haiku 4</option>
+                                        </select>
+                                    </div>
+                                </>
+                            )}
+                            
+                            {editedConfig?.llm?.provider === 'ollama' && (
+                                <>
+                                    <div className="form-group">
+                                        <label className="form-label">Ollama Endpoint</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.llm?.ollama_endpoint || 'http://localhost:11434'}
+                                            onChange={(e) => updateField('llm', 'ollama_endpoint', e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Ollama Model</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.llm?.ollama_model || 'llama3.1'}
+                                            onChange={(e) => updateField('llm', 'ollama_model', e.target.value)}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            
+                            {editedConfig?.llm?.provider === 'vllm' && (
+                                <>
+                                    <div className="form-group">
+                                        <label className="form-label">vLLM Endpoint</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.llm?.vllm_endpoint || 'http://localhost:8000'}
+                                            onChange={(e) => updateField('llm', 'vllm_endpoint', e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">vLLM Model</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.llm?.vllm_model || 'mistral'}
+                                            onChange={(e) => updateField('llm', 'vllm_model', e.target.value)}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            
+                            <div className="form-group">
+                                <label className="form-label">Max Tokens</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.llm?.max_tokens || 4096}
+                                    onChange={(e) => updateField('llm', 'max_tokens', parseInt(e.target.value))}
+                                />
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Timeout (seconds)</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.llm?.timeout_seconds || 120}
+                                    onChange={(e) => updateField('llm', 'timeout_seconds', parseInt(e.target.value))}
+                                />
+                            </div>
+                            
+                            <div style={{ marginTop: 24 }}>
+                                <button 
+                                    className="btn btn-secondary"
+                                    onClick={() => testConnection('llm')}
+                                    disabled={testing === 'llm'}
+                                >
+                                    {testing === 'llm' ? 'Testing...' : 'Test Connection'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Elasticsearch Tab */}
+                    {activeTab === 'elasticsearch' && (
+                        <div className="card">
+                            <div className="card-title" style={{ marginBottom: 24 }}>
+                                Elasticsearch Configuration
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">
+                                    <input 
+                                        type="checkbox"
+                                        checked={editedConfig?.elasticsearch?.enabled || false}
+                                        onChange={(e) => updateField('elasticsearch', 'enabled', e.target.checked)}
+                                        style={{ marginRight: 8 }}
+                                    />
+                                    Enable Elasticsearch Integration
+                                </label>
+                            </div>
+                            
+                            {editedConfig?.elasticsearch?.enabled && (
+                                <>
+                                    <div className="form-group">
+                                        <label className="form-label">Hosts (comma-separated)</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={(editedConfig?.elasticsearch?.hosts || []).join(', ')}
+                                            onChange={(e) => updateField('elasticsearch', 'hosts', e.target.value.split(',').map(h => h.trim()))}
+                                            placeholder="https://localhost:9200"
+                                        />
+                                    </div>
+                                    
+                                    {renderSecretField('elasticsearch', 'api_key', 'API Key', 'Optional API key')}
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Username</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.elasticsearch?.username || ''}
+                                            onChange={(e) => updateField('elasticsearch', 'username', e.target.value)}
+                                            placeholder="elastic"
+                                        />
+                                    </div>
+                                    
+                                    {renderSecretField('elasticsearch', 'password', 'Password', 'Optional password')}
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Index Pattern</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.elasticsearch?.index_pattern || 'sentineldlp-incidents-*'}
+                                            onChange={(e) => updateField('elasticsearch', 'index_pattern', e.target.value)}
+                                        />
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">
+                                            <input 
+                                                type="checkbox"
+                                                checked={editedConfig?.elasticsearch?.verify_certs !== false}
+                                                onChange={(e) => updateField('elasticsearch', 'verify_certs', e.target.checked)}
+                                                style={{ marginRight: 8 }}
+                                            />
+                                            Verify TLS Certificates
+                                        </label>
+                                    </div>
+                                    
+                                    <div style={{ marginTop: 24 }}>
+                                        <button 
+                                            className="btn btn-secondary"
+                                            onClick={() => testConnection('elasticsearch')}
+                                            disabled={testing === 'elasticsearch'}
+                                        >
+                                            {testing === 'elasticsearch' ? 'Testing...' : 'Test Connection'}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+                    
+                    {/* Active Directory Tab */}
+                    {activeTab === 'active_directory' && (
+                        <div className="card">
+                            <div className="card-title" style={{ marginBottom: 24 }}>
+                                Active Directory Configuration
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">
+                                    <input 
+                                        type="checkbox"
+                                        checked={editedConfig?.active_directory?.enabled || false}
+                                        onChange={(e) => updateField('active_directory', 'enabled', e.target.checked)}
+                                        style={{ marginRight: 8 }}
+                                    />
+                                    Enable Active Directory Authentication
+                                </label>
+                            </div>
+                            
+                            {editedConfig?.active_directory?.enabled && (
+                                <>
+                                    <div className="form-group">
+                                        <label className="form-label">AD Server</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.active_directory?.server || ''}
+                                            onChange={(e) => updateField('active_directory', 'server', e.target.value)}
+                                            placeholder="ldap://ad.company.com"
+                                        />
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Port</label>
+                                        <input 
+                                            type="number"
+                                            className="form-input"
+                                            value={editedConfig?.active_directory?.port || 389}
+                                            onChange={(e) => updateField('active_directory', 'port', parseInt(e.target.value))}
+                                        />
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">
+                                            <input 
+                                                type="checkbox"
+                                                checked={editedConfig?.active_directory?.use_ssl !== false}
+                                                onChange={(e) => updateField('active_directory', 'use_ssl', e.target.checked)}
+                                                style={{ marginRight: 8 }}
+                                            />
+                                            Use SSL/TLS
+                                        </label>
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Base DN</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.active_directory?.base_dn || ''}
+                                            onChange={(e) => updateField('active_directory', 'base_dn', e.target.value)}
+                                            placeholder="dc=company,dc=com"
+                                        />
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Bind User (Service Account)</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.active_directory?.bind_user || ''}
+                                            onChange={(e) => updateField('active_directory', 'bind_user', e.target.value)}
+                                            placeholder="cn=service,ou=users,dc=company,dc=com"
+                                        />
+                                    </div>
+                                    
+                                    {renderSecretField('active_directory', 'bind_password', 'Bind Password', 'Service account password')}
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">User Group (Required for Access)</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.active_directory?.user_group || ''}
+                                            onChange={(e) => updateField('active_directory', 'user_group', e.target.value)}
+                                            placeholder="cn=dlp-users,ou=groups,dc=company,dc=com"
+                                        />
+                                    </div>
+                                    
+                                    <div className="form-group">
+                                        <label className="form-label">Admin Group (Required for Admin Access)</label>
+                                        <input 
+                                            type="text"
+                                            className="form-input"
+                                            value={editedConfig?.active_directory?.admin_group || ''}
+                                            onChange={(e) => updateField('active_directory', 'admin_group', e.target.value)}
+                                            placeholder="cn=dlp-admins,ou=groups,dc=company,dc=com"
+                                        />
+                                    </div>
+                                    
+                                    <div style={{ marginTop: 24 }}>
+                                        <button 
+                                            className="btn btn-secondary"
+                                            onClick={() => testConnection('active_directory')}
+                                            disabled={testing === 'active_directory'}
+                                        >
+                                            {testing === 'active_directory' ? 'Testing...' : 'Test Connection'}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+                    
+                    {/* Processing Tab */}
+                    {activeTab === 'processing' && (
+                        <div className="card">
+                            <div className="card-title" style={{ marginBottom: 24 }}>
+                                Document Processing Configuration
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Maximum File Size (MB)</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.processing?.max_file_size_mb || 100}
+                                    onChange={(e) => updateField('processing', 'max_file_size_mb', parseInt(e.target.value))}
+                                />
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Chunk Size (MB)</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.processing?.chunk_size_mb || 5}
+                                    onChange={(e) => updateField('processing', 'chunk_size_mb', parseInt(e.target.value))}
+                                />
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Concurrent Jobs</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.processing?.concurrent_jobs || 10}
+                                    onChange={(e) => updateField('processing', 'concurrent_jobs', parseInt(e.target.value))}
+                                />
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">
+                                    <input 
+                                        type="checkbox"
+                                        checked={editedConfig?.processing?.ocr_enabled !== false}
+                                        onChange={(e) => updateField('processing', 'ocr_enabled', e.target.checked)}
+                                        style={{ marginRight: 8 }}
+                                    />
+                                    Enable OCR Processing
+                                </label>
+                            </div>
+                            
+                            {editedConfig?.processing?.ocr_enabled && (
+                                <div className="form-group">
+                                    <label className="form-label">OCR Languages</label>
+                                    <input 
+                                        type="text"
+                                        className="form-input"
+                                        value={editedConfig?.processing?.ocr_languages || 'eng+ara'}
+                                        onChange={(e) => updateField('processing', 'ocr_languages', e.target.value)}
+                                        placeholder="eng+ara"
+                                    />
+                                    <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                                        Tesseract language codes, separated by +
+                                    </div>
+                                </div>
+                            )}
+                            
+                            <div className="form-group">
+                                <label className="form-label">
+                                    <input 
+                                        type="checkbox"
+                                        checked={editedConfig?.processing?.auto_delete_uploads !== false}
+                                        onChange={(e) => updateField('processing', 'auto_delete_uploads', e.target.checked)}
+                                        style={{ marginRight: 8 }}
+                                    />
+                                    Auto-delete Uploaded Files After Processing
+                                </label>
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Retention Period (Days)</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.processing?.retention_days || 30}
+                                    onChange={(e) => updateField('processing', 'retention_days', parseInt(e.target.value))}
+                                />
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Security Tab */}
+                    {activeTab === 'security' && (
+                        <div className="card">
+                            <div className="card-title" style={{ marginBottom: 24 }}>
+                                Security Configuration
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Session Timeout (Minutes)</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.security?.session_timeout_minutes || 30}
+                                    onChange={(e) => updateField('security', 'session_timeout_minutes', parseInt(e.target.value))}
+                                />
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Max Login Attempts</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.security?.max_login_attempts || 5}
+                                    onChange={(e) => updateField('security', 'max_login_attempts', parseInt(e.target.value))}
+                                />
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Lockout Duration (Minutes)</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.security?.lockout_duration_minutes || 15}
+                                    onChange={(e) => updateField('security', 'lockout_duration_minutes', parseInt(e.target.value))}
+                                />
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">API Rate Limit (requests/minute)</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.security?.api_rate_limit || 100}
+                                    onChange={(e) => updateField('security', 'api_rate_limit', parseInt(e.target.value))}
+                                />
+                            </div>
+                            
+                            <div className="form-group">
+                                <label className="form-label">Audit Log Retention (Days)</label>
+                                <input 
+                                    type="number"
+                                    className="form-input"
+                                    value={editedConfig?.security?.audit_retention_days || 365}
+                                    onChange={(e) => updateField('security', 'audit_retention_days', parseInt(e.target.value))}
+                                />
+                            </div>
+                            
+                            <div style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--border-color)' }}>
+                                <div className="card-title" style={{ marginBottom: 16 }}>Encryption Key Management</div>
+                                <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>
+                                    Rotate the master encryption key used to protect sensitive configuration values.
+                                    This will re-encrypt all secrets with a new key.
+                                </p>
+                                <button className="btn btn-danger" onClick={rotateKey}>
+                                    <Icons.RotateCw /> Rotate Encryption Key
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Audit Log Tab */}
+                    {activeTab === 'audit' && (
+                        <div className="card">
+                            <div className="card-header">
+                                <div className="card-title">Configuration Audit Log</div>
+                                <button className="btn btn-secondary" onClick={loadAuditLog}>
+                                    Refresh
+                                </button>
+                            </div>
+                            
+                            {auditLog.length === 0 ? (
+                                <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 40 }}>
+                                    No audit log entries yet
+                                </div>
+                            ) : (
+                                <table className="incidents-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <th>User</th>
+                                            <th>Action</th>
+                                            <th>Category</th>
+                                            <th>Field</th>
+                                            <th>IP Address</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {auditLog.map((entry, idx) => (
+                                            <tr key={idx}>
+                                                <td>{formatTimestamp(entry.timestamp)}</td>
+                                                <td>{entry.user}</td>
+                                                <td>
+                                                    <span className={`severity-badge severity-${entry.action === 'rotate_key' ? 'high' : 'low'}`}>
+                                                        {entry.action}
+                                                    </span>
+                                                </td>
+                                                <td>{entry.category}</td>
+                                                <td>{entry.field}</td>
+                                                <td style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                                                    {entry.ip_address || '-'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
+        // Scan History Page Component (Elasticsearch-powered)
+        const ScanHistoryPage = ({ addToast }) => {
+            const [scans, setScans] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [filters, setFilters] = useState({
+                severity: '',
+                department: '',
+                filetype: ''
+            });
+            const [pagination, setPagination] = useState({
+                page: 1,
+                size: 20,
+                total: 0,
+                pages: 0
+            });
+            const [previewModal, setPreviewModal] = useState({ open: false, content: '', fileId: null, loading: false });
+            const [selectedScan, setSelectedScan] = useState(null);
+
+            const loadScans = async () => {
+                setLoading(true);
+                try {
+                    const params = new URLSearchParams({
+                        page: pagination.page,
+                        size: pagination.size
+                    });
+                    if (searchQuery) params.append('query', searchQuery);
+                    if (filters.severity) params.append('severity', filters.severity);
+                    if (filters.department) params.append('department', filters.department);
+                    if (filters.filetype) params.append('filetype', filters.filetype);
+
+                    const res = await fetch(`${API_BASE}/api/scans?${params}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setScans(data.scans || []);
+                        setPagination(prev => ({
+                            ...prev,
+                            total: data.total,
+                            pages: data.pages
+                        }));
+                    }
+                } catch (err) {
+                    addToast('Failed to load scans', 'error');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                loadScans();
+            }, [pagination.page, filters]);
+
+            const handleSearch = (e) => {
+                e.preventDefault();
+                setPagination(prev => ({ ...prev, page: 1 }));
+                loadScans();
+            };
+
+            const previewFile = async (fileId) => {
+                if (!fileId) {
+                    addToast('No file stored for this scan', 'error');
+                    return;
+                }
+                setPreviewModal({ open: true, content: '', fileId, loading: true });
+                try {
+                    const res = await fetch(`${API_BASE}/api/files/${fileId}/preview`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setPreviewModal({ open: true, content: data.preview, fileId, loading: false });
+                    } else {
+                        setPreviewModal({ open: true, content: 'Preview not available', fileId, loading: false });
+                    }
+                } catch (err) {
+                    setPreviewModal({ open: true, content: 'Failed to load preview', fileId, loading: false });
+                }
+            };
+
+            const downloadFile = (fileId) => {
+                if (!fileId) {
+                    addToast('No file stored for this scan', 'error');
+                    return;
+                }
+                window.open(`${API_BASE}/api/files/${fileId}/download`, '_blank');
+            };
+
+            const deleteScan = async (scanId) => {
+                if (!confirm('Are you sure you want to delete this scan?')) return;
+                try {
+                    const res = await fetch(`${API_BASE}/api/scans/${scanId}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        addToast('Scan deleted', 'success');
+                        loadScans();
+                    }
+                } catch (err) {
+                    addToast('Failed to delete scan', 'error');
+                }
+            };
+
+            return (
+                <div>
+                    <div className="page-header">
+                        <h1 className="page-title">Scan History</h1>
+                        <p className="page-subtitle">Search and review all document scans stored in Elasticsearch</p>
+                    </div>
+
+                    {/* Search and Filters */}
+                    <div className="card">
+                        <form onSubmit={handleSearch} style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                            <div style={{ flex: '1 1 300px' }}>
+                                <label className="form-label">Search</label>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="Search filename, content..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                            <div style={{ flex: '0 0 150px' }}>
+                                <label className="form-label">Severity</label>
+                                <select
+                                    className="form-input"
+                                    value={filters.severity}
+                                    onChange={(e) => setFilters(prev => ({ ...prev, severity: e.target.value }))}
+                                >
+                                    <option value="">All</option>
+                                    <option value="LOW">Low</option>
+                                    <option value="MEDIUM">Medium</option>
+                                    <option value="HIGH">High</option>
+                                    <option value="CRITICAL">Critical</option>
+                                </select>
+                            </div>
+                            <div style={{ flex: '0 0 150px' }}>
+                                <label className="form-label">File Type</label>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="e.g. txt, json"
+                                    value={filters.filetype}
+                                    onChange={(e) => setFilters(prev => ({ ...prev, filetype: e.target.value }))}
+                                />
+                            </div>
+                            <button type="submit" className="btn btn-primary" style={{ height: 42 }}>
+                                Search
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ height: 42 }}
+                                onClick={() => {
+                                    setSearchQuery('');
+                                    setFilters({ severity: '', department: '', filetype: '' });
+                                    setPagination(prev => ({ ...prev, page: 1 }));
+                                }}
+                            >
+                                Clear
+                            </button>
+                        </form>
+                    </div>
+
+                    {/* Results */}
+                    <div className="card">
+                        <div className="card-header">
+                            <h3 className="card-title">
+                                {loading ? 'Loading...' : `${pagination.total} scans found`}
+                            </h3>
+                            <button className="btn btn-secondary" onClick={loadScans}>
+                                <Icons.RotateCw /> Refresh
+                            </button>
+                        </div>
+
+                        {loading ? (
+                            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                                Loading scans...
+                            </div>
+                        ) : scans.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                                <Icons.Shield />
+                                <p style={{ marginTop: 16 }}>No scans found</p>
+                            </div>
+                        ) : (
+                            <table className="incidents-table">
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>Filename</th>
+                                        <th>Type</th>
+                                        <th>Severity</th>
+                                        <th>Score</th>
+                                        <th>File</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {scans.map(scan => (
+                                        <tr key={scan.id}>
+                                            <td style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                                                {formatTimestamp(scan.timestamp)}
+                                            </td>
+                                            <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {scan.filename}
+                                            </td>
+                                            <td>
+                                                <span className="severity-badge severity-low">{scan.filetype}</span>
+                                            </td>
+                                            <td>
+                                                <span className={`severity-badge severity-${scan.sensitivity_level?.toLowerCase() || 'low'}`}>
+                                                    {scan.sensitivity_level || scan.overall_score > 60 ?
+                                                        (scan.sensitivity_level || 'HIGH') : 'LOW'}
+                                                </span>
+                                            </td>
+                                            <td style={{ fontFamily: 'JetBrains Mono', fontWeight: 600 }}>
+                                                {scan.overall_sensitivity_score || scan.overall_score || 0}
+                                            </td>
+                                            <td>
+                                                {scan.file_stored ? (
+                                                    <span style={{ color: 'var(--accent-green)' }}>Stored</span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-muted)' }}>-</span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: 8 }}>
+                                                    <button
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: '6px 10px', fontSize: 12 }}
+                                                        onClick={() => setSelectedScan(scan)}
+                                                    >
+                                                        Details
+                                                    </button>
+                                                    {scan.file_stored && (
+                                                        <>
+                                                            <button
+                                                                className="btn btn-secondary"
+                                                                style={{ padding: '6px 10px', fontSize: 12 }}
+                                                                onClick={() => previewFile(scan.file_id)}
+                                                            >
+                                                                Preview
+                                                            </button>
+                                                            <button
+                                                                className="btn btn-secondary"
+                                                                style={{ padding: '6px 10px', fontSize: 12 }}
+                                                                onClick={() => downloadFile(scan.file_id)}
+                                                            >
+                                                                Download
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    <button
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: '6px 10px', fontSize: 12, color: 'var(--accent-red)' }}
+                                                        onClick={() => deleteScan(scan.id)}
+                                                    >
+                                                        <Icons.Trash />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+
+                        {/* Pagination */}
+                        {pagination.pages > 1 && (
+                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }}>
+                                <button
+                                    className="btn btn-secondary"
+                                    disabled={pagination.page === 1}
+                                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                                >
+                                    Previous
+                                </button>
+                                <span style={{ color: 'var(--text-secondary)' }}>
+                                    Page {pagination.page} of {pagination.pages}
+                                </span>
+                                <button
+                                    className="btn btn-secondary"
+                                    disabled={pagination.page === pagination.pages}
+                                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Preview Modal */}
+                    {previewModal.open && (
+                        <div
+                            style={{
+                                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                                background: 'rgba(0,0,0,0.85)', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center', zIndex: 1000
+                            }}
+                            onClick={() => setPreviewModal({ open: false, content: '', fileId: null, loading: false })}
+                        >
+                            <div
+                                style={{
+                                    background: 'var(--bg-card)', border: '1px solid var(--border-color)',
+                                    borderRadius: 16, maxWidth: 900, width: '90%', maxHeight: '80vh',
+                                    display: 'flex', flexDirection: 'column'
+                                }}
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <h3>File Preview</h3>
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={() => setPreviewModal({ open: false, content: '', fileId: null, loading: false })}
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                                <div style={{ padding: 24, overflow: 'auto', flex: 1 }}>
+                                    {previewModal.loading ? (
+                                        <div style={{ textAlign: 'center', padding: 40 }}>Loading preview...</div>
+                                    ) : (
+                                        <pre style={{
+                                            background: 'var(--bg-tertiary)', padding: 16, borderRadius: 8,
+                                            fontFamily: 'JetBrains Mono', fontSize: 12, lineHeight: 1.5,
+                                            whiteSpace: 'pre-wrap', wordWrap: 'break-word', overflow: 'auto'
+                                        }}>
+                                            {previewModal.content}
+                                        </pre>
+                                    )}
+                                </div>
+                                <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                                    <button className="btn btn-primary" onClick={() => downloadFile(previewModal.fileId)}>
+                                        Download File
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Scan Details Modal */}
+                    {selectedScan && (
+                        <div
+                            style={{
+                                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                                background: 'rgba(0,0,0,0.85)', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center', zIndex: 1000
+                            }}
+                            onClick={() => setSelectedScan(null)}
+                        >
+                            <div
+                                style={{
+                                    background: 'var(--bg-card)', border: '1px solid var(--border-color)',
+                                    borderRadius: 16, maxWidth: 700, width: '90%', maxHeight: '80vh',
+                                    overflow: 'auto'
+                                }}
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <h3>Scan Details</h3>
+                                    <button className="btn btn-secondary" onClick={() => setSelectedScan(null)}>Close</button>
+                                </div>
+                                <div style={{ padding: 24 }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+                                        <div>
+                                            <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>Filename</label>
+                                            <div style={{ fontWeight: 500 }}>{selectedScan.filename}</div>
+                                        </div>
+                                        <div>
+                                            <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>Type</label>
+                                            <div>{selectedScan.filetype}</div>
+                                        </div>
+                                        <div>
+                                            <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>Size</label>
+                                            <div>{selectedScan.filesize}</div>
+                                        </div>
+                                        <div>
+                                            <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>Timestamp</label>
+                                            <div>{formatTimestamp(selectedScan.timestamp)}</div>
+                                        </div>
+                                        <div>
+                                            <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>Severity</label>
+                                            <div>
+                                                <span className={`severity-badge severity-${selectedScan.sensitivity_level?.toLowerCase() || 'low'}`}>
+                                                    {selectedScan.sensitivity_level || 'UNKNOWN'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>Score</label>
+                                            <div style={{ fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: 18 }}>
+                                                {selectedScan.overall_sensitivity_score || selectedScan.overall_score || 0}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {selectedScan.dimension_scores && (
+                                        <div style={{ marginBottom: 24 }}>
+                                            <label style={{ color: 'var(--text-muted)', fontSize: 12, display: 'block', marginBottom: 8 }}>Dimension Scores</label>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                                                {Object.entries(selectedScan.dimension_scores).map(([key, value]) => (
+                                                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: 8 }}>
+                                                        <span style={{ textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
+                                                        <span style={{ fontFamily: 'JetBrains Mono', fontWeight: 600 }}>{value}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedScan.reasoning && (
+                                        <div>
+                                            <label style={{ color: 'var(--text-muted)', fontSize: 12, display: 'block', marginBottom: 8 }}>Analysis Reasoning</label>
+                                            <div style={{ background: 'var(--bg-tertiary)', padding: 16, borderRadius: 8, fontSize: 13, lineHeight: 1.6 }}>
+                                                {selectedScan.reasoning}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // Main App Component
+        const App = () => {
+            const [currentPage, setCurrentPage] = useState('scanner');
+            const [toasts, setToasts] = useState([]);
+            const [dashboardKey, setDashboardKey] = useState(0);
+            
+            const addToast = useCallback((message, type = 'success') => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, message, type }]);
+            }, []);
+            
+            const removeToast = useCallback((id) => {
+                setToasts(prev => prev.filter(t => t.id !== id));
+            }, []);
+            
+            const handleAnalysisComplete = () => {
+                setDashboardKey(prev => prev + 1);
+            };
+            
+            return (
+                <div className="app-container">
+                    <nav className="sidebar">
+                        <div className="logo">
+                            <div className="logo-text">SentinelDLP</div>
+                            <div className="logo-sub">Sensitive Data Detection</div>
+                        </div>
+                        <div className="nav-menu">
+                            <div 
+                                className={`nav-item ${currentPage === 'scanner' ? 'active' : ''}`}
+                                onClick={() => setCurrentPage('scanner')}
+                            >
+                                <span className="nav-icon"><Icons.Scanner /></span>
+                                Scanner
+                            </div>
+                            <div
+                                className={`nav-item ${currentPage === 'dashboard' ? 'active' : ''}`}
+                                onClick={() => setCurrentPage('dashboard')}
+                            >
+                                <span className="nav-icon"><Icons.Dashboard /></span>
+                                Dashboard
+                            </div>
+                            <div
+                                className={`nav-item ${currentPage === 'history' ? 'active' : ''}`}
+                                onClick={() => setCurrentPage('history')}
+                            >
+                                <span className="nav-icon"><Icons.History /></span>
+                                Scan History
+                            </div>
+                            <div
+                                className={`nav-item ${currentPage === 'settings' ? 'active' : ''}`}
+                                onClick={() => setCurrentPage('settings')}
+                            >
+                                <span className="nav-icon"><Icons.Settings /></span>
+                                Settings
+                            </div>
+                            <div 
+                                className={`nav-item ${currentPage === 'admin' ? 'active' : ''}`}
+                                onClick={() => setCurrentPage('admin')}
+                                style={{ marginTop: 'auto' }}
+                            >
+                                <span className="nav-icon"><Icons.Admin /></span>
+                                Admin
+                            </div>
+                        </div>
+                    </nav>
+                    
+                    <main className="main-content">
+                        {currentPage === 'scanner' && (
+                            <ScannerPage addToast={addToast} onAnalysisComplete={handleAnalysisComplete} />
+                        )}
+                        {currentPage === 'dashboard' && (
+                            <DashboardPage refreshKey={dashboardKey} />
+                        )}
+                        {currentPage === 'history' && (
+                            <ScanHistoryPage addToast={addToast} />
+                        )}
+                        {currentPage === 'settings' && (
+                            <SettingsPage addToast={addToast} />
+                        )}
+                        {currentPage === 'admin' && (
+                            <AdminPage addToast={addToast} />
+                        )}
+                    </main>
+                    
+                    <div className="toast-container">
+                        {toasts.map(toast => (
+                            <Toast 
+                                key={toast.id}
+                                message={toast.message}
+                                type={toast.type}
+                                onClose={() => removeToast(toast.id)}
+                            />
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+        
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
