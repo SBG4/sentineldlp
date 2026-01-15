@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   SentinelDLP Project Specification
-  Version: 1.8.3
+  Version: 1.8.4
   Last Updated: 2026-01-15
   Purpose: Authoritative guardrail document for Claude instances working on this project
 
@@ -12,6 +12,8 @@
   4. Changes to this specification require human review and approval
   5. MANDATORY: Use multi-agent validation for all feature implementations
   6. MANDATORY: Follow the CSRF compliance checklist for ALL fetch calls
+  7. MANDATORY: Follow the IDEA → TEST → DEV → PROD workflow for all changes
+  8. MANDATORY: Test fresh browser access after ANY authentication changes
 
   CURRENT STATUS:
   - FR-001 IMPLEMENTED: Universal File Type Support with OCR Integration
@@ -24,7 +26,7 @@
   - 3 Open Gaps: GAP-004 (Local LLM), GAP-006 (Load Balancing), GAP-007 (HTTPS)
 -->
 
-<sentineldlp_specification version="1.8.3">
+<sentineldlp_specification version="1.8.4">
 
   <!-- ═══════════════════════════════════════════════════════════════════════════
        SECTION 1: PROJECT IDENTITY & PURPOSE
@@ -341,6 +343,61 @@
           window.URL.revokeObjectURL(downloadUrl);
         </correct_pattern>
       </pitfall>
+
+      <pitfall id="15" severity="CRITICAL">
+        <description>Fresh browser access fails while cached sessions work - credential/session state mismatch</description>
+        <root_cause>
+          This occurs when authentication state becomes inconsistent between:
+          1. User credentials stored in users.json (password_hash, failed_attempts, must_change_password)
+          2. Existing browser sessions (localStorage tokens + HttpOnly cookies)
+          3. In-memory UserManager state vs persisted file state
+
+          Existing sessions continue working because:
+          - They have valid access_tokens in localStorage
+          - They have valid refresh_tokens in HttpOnly cookies
+          - Token refresh doesn't require re-authentication
+
+          Fresh browsers fail because:
+          - They must authenticate with username/password
+          - The password may have been changed (hash mismatch)
+          - Failed attempts may have accumulated (lockout countdown)
+          - must_change_password flag may block normal login flow
+          - Password policy may have changed (old password no longer valid)
+        </root_cause>
+        <symptoms>
+          <symptom>Incognito/new browser shows login page but login always fails</symptom>
+          <symptom>Browser with existing session works perfectly</symptom>
+          <symptom>"Invalid username or password" error even with correct credentials</symptom>
+          <symptom>API returns 401 for login but 200 for token refresh</symptom>
+        </symptoms>
+        <prevention>
+          <step>ALWAYS test authentication in fresh/incognito browser after ANY auth changes</step>
+          <step>Document default credentials in SPECIFICATION and keep them synchronized</step>
+          <step>Reset failed_attempts and must_change_password after password resets</step>
+          <step>Verify password changes persist to users.json file (not just in-memory)</step>
+          <step>Include fresh browser test in PROD gate of deployment workflow</step>
+        </prevention>
+        <detection>
+          <check>Test login in incognito browser with documented default credentials</check>
+          <check>Verify users.json has correct password_hash, failed_attempts=0, must_change_password=false</check>
+          <check>Compare bcrypt hash directly: bcrypt.checkpw(password, stored_hash)</check>
+          <check>Check backend logs for 401 vs 200 patterns on /api/auth/login</check>
+        </detection>
+        <resolution>
+          <step>1. Identify which user accounts are affected</step>
+          <step>2. Directly update users.json file with correct password hash</step>
+          <step>3. Reset failed_attempts to 0</step>
+          <step>4. Set must_change_password to false (or handle in UI)</step>
+          <step>5. Restart backend to reload user data</step>
+          <step>6. Verify with fresh browser login test</step>
+        </resolution>
+        <incident_date>2026-01-15</incident_date>
+        <lesson_learned>
+          Testing only with existing sessions masks authentication state issues.
+          The multi-agent workflow MUST include a "fresh browser test" gate that
+          verifies new users can authenticate, not just existing sessions.
+        </lesson_learned>
+      </pitfall>
     </common_pitfalls>
 
     <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -460,6 +517,264 @@
         <endpoint component="UserManagementPage" function="unlockUser" method="POST">/api/users/{id}/unlock</endpoint>
       </frontend_endpoints_requiring_csrf>
     </csrf_compliance_guardrail>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════
+         MULTI-STAGE DEVELOPMENT WORKFLOW (IDEA → TEST → DEV → PROD)
+         ═══════════════════════════════════════════════════════════════════════════ -->
+    <multi_stage_workflow required="true" severity="CRITICAL">
+      <description>
+        MANDATORY workflow for all feature implementations. This multi-agent, multi-stage
+        approach ensures quality through specialized validation at each stage, preventing
+        issues like the "fresh browser access" bug where existing sessions masked broken
+        authentication for new users.
+      </description>
+
+      <stage id="IDEA" name="Ideation &amp; Planning">
+        <description>Conceptualize and document the feature before any implementation</description>
+        <responsible_agent>Architect/Planner Agent</responsible_agent>
+        <inputs>
+          <input>User requirement or bug report</input>
+          <input>Current SPECIFICATION.xml context</input>
+        </inputs>
+        <activities>
+          <activity>Analyze requirements against existing architecture</activity>
+          <activity>Identify affected components (frontend, backend, docker)</activity>
+          <activity>Document API contracts and data models</activity>
+          <activity>Identify security implications (auth, CSRF, rate limiting)</activity>
+          <activity>Create implementation checklist</activity>
+          <activity>Define success criteria and test cases</activity>
+        </activities>
+        <outputs>
+          <output>Feature specification document</output>
+          <output>Implementation checklist</output>
+          <output>Test case definitions</output>
+          <output>Security review requirements</output>
+        </outputs>
+        <gate_criteria>
+          <criterion>Requirements are clear and unambiguous</criterion>
+          <criterion>All affected files identified</criterion>
+          <criterion>API contracts documented</criterion>
+          <criterion>Security implications assessed</criterion>
+          <criterion>Rollback plan defined</criterion>
+        </gate_criteria>
+      </stage>
+
+      <stage id="TEST" name="Test Environment Setup">
+        <description>Prepare test environment and verify baseline functionality BEFORE changes</description>
+        <responsible_agent>Test Environment Agent</responsible_agent>
+        <inputs>
+          <input>Feature specification from IDEA stage</input>
+          <input>Current codebase state</input>
+        </inputs>
+        <activities>
+          <activity>Document current system state (baseline)</activity>
+          <activity>Verify all containers are healthy</activity>
+          <activity>Test existing functionality works (regression baseline)</activity>
+          <activity>Test FRESH BROWSER login (critical baseline!)</activity>
+          <activity>Record current API responses for comparison</activity>
+          <activity>Create test data if needed</activity>
+        </activities>
+        <outputs>
+          <output>Baseline test results</output>
+          <output>Fresh browser login verification</output>
+          <output>Test data setup confirmation</output>
+        </outputs>
+        <gate_criteria>
+          <criterion>All containers healthy</criterion>
+          <criterion>Fresh browser login works with documented credentials</criterion>
+          <criterion>Existing functionality verified working</criterion>
+          <criterion>Test environment isolated from production data</criterion>
+        </gate_criteria>
+        <critical_check name="FRESH_BROWSER_BASELINE" mandatory="true">
+          <description>
+            MUST verify fresh browser access works BEFORE making any changes.
+            This establishes a baseline and ensures we don't introduce regressions.
+          </description>
+          <steps>
+            <step>Open incognito/private browser window</step>
+            <step>Navigate to application URL</step>
+            <step>Login page should render correctly</step>
+            <step>Login with documented default credentials must succeed</step>
+            <step>User should see authenticated dashboard</step>
+          </steps>
+        </critical_check>
+      </stage>
+
+      <stage id="DEV" name="Development &amp; Implementation">
+        <description>Implement the feature with continuous validation</description>
+        <responsible_agent>Implementation Agent</responsible_agent>
+        <inputs>
+          <input>Feature specification from IDEA stage</input>
+          <input>Baseline test results from TEST stage</input>
+          <input>Implementation checklist</input>
+        </inputs>
+        <activities>
+          <activity>Implement backend changes</activity>
+          <activity>Implement frontend changes</activity>
+          <activity>Update Docker configurations if needed</activity>
+          <activity>Run incremental tests after each major change</activity>
+          <activity>Validate CSRF compliance for new fetch calls</activity>
+          <activity>Rebuild affected containers</activity>
+          <activity>Verify changes don't break existing functionality</activity>
+        </activities>
+        <outputs>
+          <output>Implemented code changes</output>
+          <output>Updated containers</output>
+          <output>Implementation notes</output>
+        </outputs>
+        <gate_criteria>
+          <criterion>All planned files modified</criterion>
+          <criterion>Code compiles/parses without errors</criterion>
+          <criterion>Containers build successfully</criterion>
+          <criterion>All containers start healthy</criterion>
+          <criterion>New functionality works as specified</criterion>
+          <criterion>CSRF tokens included in all state-changing requests</criterion>
+        </gate_criteria>
+        <validation_checklist>
+          <item>All SecurityHelpers.authFetch() calls for authenticated endpoints</item>
+          <item>FormData uploads have manual CSRF headers</item>
+          <item>XHR requests have proper header setup</item>
+          <item>No window.open() to authenticated endpoints</item>
+          <item>Error handling is complete</item>
+          <item>No hardcoded secrets or credentials</item>
+        </validation_checklist>
+      </stage>
+
+      <stage id="PROD" name="Production Readiness Validation">
+        <description>Final validation before declaring feature complete</description>
+        <responsible_agent>QA/Validation Agent</responsible_agent>
+        <inputs>
+          <input>Implemented changes from DEV stage</input>
+          <input>Baseline test results from TEST stage</input>
+          <input>Test case definitions from IDEA stage</input>
+        </inputs>
+        <activities>
+          <activity>Run full regression test suite</activity>
+          <activity>Test FRESH BROWSER login (CRITICAL!)</activity>
+          <activity>Test complete user workflows end-to-end</activity>
+          <activity>Verify security headers and CSRF protection</activity>
+          <activity>Test error scenarios and edge cases</activity>
+          <activity>Compare API responses with baseline</activity>
+          <activity>Verify documentation is updated</activity>
+          <activity>Update SPECIFICATION.xml with changes</activity>
+        </activities>
+        <outputs>
+          <output>Full test results</output>
+          <output>Fresh browser verification</output>
+          <output>Security audit results</output>
+          <output>Updated SPECIFICATION.xml</output>
+        </outputs>
+        <gate_criteria>
+          <criterion>All regression tests pass</criterion>
+          <criterion>FRESH BROWSER LOGIN WORKS (non-negotiable!)</criterion>
+          <criterion>All new functionality works as specified</criterion>
+          <criterion>No security vulnerabilities introduced</criterion>
+          <criterion>SPECIFICATION.xml updated with version bump</criterion>
+          <criterion>Git commit with descriptive message</criterion>
+        </gate_criteria>
+        <critical_check name="FRESH_BROWSER_FINAL" mandatory="true">
+          <description>
+            MUST verify fresh browser access works AFTER all changes.
+            This is the MOST IMPORTANT check - it catches issues that existing sessions mask.
+          </description>
+          <steps>
+            <step>Clear all browser data OR use new incognito window</step>
+            <step>Navigate to application URL</step>
+            <step>Verify login page renders correctly</step>
+            <step>Login with default credentials (admin / Admin123)</step>
+            <step>Verify authentication succeeds</step>
+            <step>Verify user can access protected pages</step>
+            <step>Test logout functionality</step>
+            <step>Verify can login again after logout</step>
+          </steps>
+          <failure_action>
+            If fresh browser test fails, DO NOT proceed to git commit.
+            Investigate root cause following Pitfall #15 resolution steps.
+          </failure_action>
+        </critical_check>
+      </stage>
+
+      <workflow_enforcement>
+        <rule>Each stage MUST be completed before proceeding to the next</rule>
+        <rule>Gate criteria MUST all pass before stage transition</rule>
+        <rule>Fresh browser tests are NON-NEGOTIABLE checkpoints</rule>
+        <rule>SPECIFICATION.xml MUST be updated before final git commit</rule>
+        <rule>All agents should reference this workflow when implementing features</rule>
+      </workflow_enforcement>
+
+      <anti_patterns>
+        <anti_pattern name="Skip to DEV">
+          <description>Starting implementation without IDEA/TEST stages</description>
+          <consequence>Missing requirements, no baseline for regression testing</consequence>
+        </anti_pattern>
+        <anti_pattern name="Existing Session Testing Only">
+          <description>Testing only with browsers that have cached sessions/tokens</description>
+          <consequence>Fresh browser access issues go undetected (Pitfall #15)</consequence>
+        </anti_pattern>
+        <anti_pattern name="Skip PROD Validation">
+          <description>Committing without full PROD stage validation</description>
+          <consequence>Regressions shipped to production</consequence>
+        </anti_pattern>
+        <anti_pattern name="Credential Drift">
+          <description>Default credentials in SPECIFICATION don't match actual system</description>
+          <consequence>Fresh browser login fails, documentation is wrong</consequence>
+        </anti_pattern>
+      </anti_patterns>
+    </multi_stage_workflow>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════
+         LESSONS LEARNED LOG (Post-Incident Documentation)
+         ═══════════════════════════════════════════════════════════════════════════ -->
+    <lessons_learned>
+      <description>
+        Critical lessons learned from production incidents. Each entry documents what
+        went wrong, why it happened, and how to prevent recurrence. Claude instances
+        MUST review this section and apply these lessons to all implementations.
+      </description>
+
+      <lesson id="LL-001" date="2026-01-15" severity="CRITICAL">
+        <title>Fresh Browser Access Failure - Session State Mismatch</title>
+        <incident_summary>
+          Fresh browsers could not access the application while browsers with cached
+          sessions worked perfectly. Login attempts returned "Invalid username or password"
+          even with correct credentials.
+        </incident_summary>
+        <root_cause>
+          Authentication state became inconsistent:
+          1. Admin password was changed from documented default (password hash mismatch)
+          2. Failed login attempts accumulated to 3 (lockout countdown active)
+          3. must_change_password flag was set to true
+          4. UserManager.change_password() appeared to succeed but didn't persist to file
+
+          Existing sessions bypassed this because token refresh doesn't require password.
+        </root_cause>
+        <why_it_went_undetected>
+          Testing was performed with browsers that had existing valid sessions.
+          These sessions used token refresh (which doesn't require password), so the
+          broken password authentication was never exercised during testing.
+        </why_it_went_undetected>
+        <resolution>
+          1. Directly edited /app/data/config/users.json to fix password hash
+          2. Reset failed_attempts to 0
+          3. Set must_change_password to false
+          4. Restarted backend to reload user data
+          5. Verified with fresh browser login
+        </resolution>
+        <prevention_measures>
+          <measure>Added FRESH_BROWSER_BASELINE check to TEST stage</measure>
+          <measure>Added FRESH_BROWSER_FINAL check to PROD stage</measure>
+          <measure>Documented Pitfall #15 with detection and resolution steps</measure>
+          <measure>Updated default credentials in SPECIFICATION (admin / Admin123)</measure>
+          <measure>Added multi-stage workflow enforcement</measure>
+        </prevention_measures>
+        <key_takeaway>
+          NEVER rely solely on existing session testing. Fresh browser access
+          represents the new user experience and MUST be validated after ANY
+          authentication-related changes. This is now a mandatory gate in the
+          multi-stage workflow.
+        </key_takeaway>
+      </lesson>
+    </lessons_learned>
 
     <testing_requirements>
       <requirement type="api" mandatory="true">
@@ -958,8 +1273,8 @@
           </api_endpoints>
           <default_credentials>
             <username>admin</username>
-            <password>SentinelDLP@2026!</password>
-            <note>Must change on first login</note>
+            <password>Admin123</password>
+            <note>Updated 2026-01-15 after credential state incident (see Lesson LL-001)</note>
           </default_credentials>
         </phase>
 
@@ -1045,6 +1360,36 @@
        SECTION 7: VERSION HISTORY
        ═══════════════════════════════════════════════════════════════════════════ -->
   <version_history>
+    <version number="1.8.4" date="2026-01-15">
+      <author>Implementation Claude Instance</author>
+      <commit_message>Learned from my mistake: Add multi-stage workflow and fresh browser testing guardrails</commit_message>
+      <changes>
+        <change>CRITICAL BUGFIX: Fixed fresh browser access failure - credential/session state mismatch</change>
+        <change>Root cause: Admin password changed, failed_attempts accumulated, must_change_password=true, but existing sessions masked the issue</change>
+        <change>Resolution: Reset admin password to Admin123, cleared failed_attempts, set must_change_password=false</change>
+        <change>Added Pitfall #15: Fresh browser access fails while cached sessions work</change>
+        <change>Added MULTI-STAGE WORKFLOW section (IDEA - TEST - DEV - PROD)</change>
+        <change>Added FRESH_BROWSER_BASELINE check to TEST stage</change>
+        <change>Added FRESH_BROWSER_FINAL check to PROD stage (mandatory gate)</change>
+        <change>Added LESSONS LEARNED section with incident LL-001 documentation</change>
+        <change>Added workflow anti-patterns to prevent common mistakes</change>
+        <change>Updated default credentials: admin / Admin123</change>
+        <change>Added usage instruction #7: Follow IDEA - TEST - DEV - PROD workflow</change>
+        <change>Added usage instruction #8: Test fresh browser access after auth changes</change>
+      </changes>
+      <affected_files>
+        <file>/SPECIFICATION.xml - Added multi-stage workflow, pitfall #15, lessons learned</file>
+        <file>/app/data/config/users.json - Reset admin credentials (in container)</file>
+      </affected_files>
+      <test_results>
+        <test name="Fresh Browser Login">PASS - admin / Admin123 works in incognito</test>
+        <test name="API Login">PASS - Returns access_token and sets cookies</test>
+        <test name="Existing Session">PASS - Token refresh still works</test>
+        <test name="Container Health">PASS - All containers healthy</test>
+      </test_results>
+      <incident_reference>Pitfall #15, Lesson LL-001</incident_reference>
+    </version>
+
     <version number="1.8.3" date="2026-01-15">
       <author>Implementation Claude Instance</author>
       <changes>
@@ -1163,8 +1508,8 @@
   <quick_reference>
     <summary>
       <item key="Project">SentinelDLP - Enterprise DLP Tool</item>
-      <item key="Specification Version">1.8.3</item>
-      <item key="Implementation Version">1.8.3 (Logout Button Fixed)</item>
+      <item key="Specification Version">1.8.4</item>
+      <item key="Implementation Version">1.8.4 (Multi-Stage Workflow Added)</item>
       <item key="Validation Score">99/100 - ENTERPRISE_READY_SECURITY_HARDENED</item>
       <item key="Authentication">JWT + RBAC + LDAP + OWASP Security (Phase 1+2 Complete)</item>
       <item key="Security Features">HttpOnly Cookies, CSRF Protection, Rate Limiting, Security Headers</item>
@@ -1174,7 +1519,8 @@
       <item key="Resolved Gaps">5 (GAP-001, GAP-002, GAP-003, GAP-005, GAP-008)</item>
       <item key="Open Gaps">3 (GAP-004, GAP-006, GAP-007)</item>
       <item key="Implemented Features">6 (FR-001 through FR-006 Phase 2)</item>
-      <item key="Default Admin">admin / SentinelDLP@2026!</item>
+      <item key="Default Admin">admin / Admin123</item>
+      <item key="Development Workflow">IDEA - TEST - DEV - PROD (mandatory)</item>
     </summary>
 
     <access_urls>
@@ -1201,18 +1547,34 @@
     </next_priorities>
 
     <mandatory_process>
-      <step>1. Use multi-agent workflow for all features</step>
-      <step>2. Pass all workflow gates before deployment</step>
-      <step>3. Test in incognito browser to verify fresh state</step>
-      <step>4. Rebuild Docker containers after code changes</step>
-      <step>5. Verify API endpoints with curl tests</step>
-      <step>6. Check browser console for JS errors</step>
-      <step>7. Verify CSRF tokens are included in state-changing requests</step>
-      <step>8. Confirm credentials: 'include' in authenticated fetch calls</step>
-      <step>9. MANDATORY: Follow CSRF COMPLIANCE GUARDRAIL for ALL new fetch calls</step>
-      <step>10. MANDATORY: Use SecurityHelpers.authFetch() for authenticated requests (except FormData/XHR)</step>
-      <step>11. MANDATORY: Test file upload, text analysis, and settings after any auth changes</step>
+      <step>1. Follow IDEA - TEST - DEV - PROD workflow for ALL changes</step>
+      <step>2. Use multi-agent validation at each workflow stage</step>
+      <step>3. Pass all workflow gates before stage transitions</step>
+      <step>4. CRITICAL: Test in FRESH/INCOGNITO browser before AND after changes</step>
+      <step>5. Rebuild Docker containers after code changes</step>
+      <step>6. Verify API endpoints with curl tests</step>
+      <step>7. Check browser console for JS errors</step>
+      <step>8. Verify CSRF tokens are included in state-changing requests</step>
+      <step>9. Confirm credentials: 'include' in authenticated fetch calls</step>
+      <step>10. MANDATORY: Follow CSRF COMPLIANCE GUARDRAIL for ALL new fetch calls</step>
+      <step>11. MANDATORY: Use SecurityHelpers.authFetch() for authenticated requests (except FormData/XHR)</step>
+      <step>12. MANDATORY: Test file upload, text analysis, and settings after any auth changes</step>
+      <step>13. CRITICAL: Verify fresh browser login works with credentials: admin / Admin123</step>
+      <step>14. Update SPECIFICATION.xml before git commit</step>
     </mandatory_process>
+
+    <fresh_browser_test_checklist>
+      <description>MANDATORY checklist to run after ANY authentication-related changes</description>
+      <step>1. Open incognito/private browser window (or clear all browser data)</step>
+      <step>2. Navigate to http://localhost:8122</step>
+      <step>3. Verify login page renders correctly</step>
+      <step>4. Login with admin / Admin123</step>
+      <step>5. Verify authentication succeeds and dashboard loads</step>
+      <step>6. Navigate to different pages (Scanner, Dashboard, Settings)</step>
+      <step>7. Test logout button</step>
+      <step>8. Verify can login again after logout</step>
+      <step>9. If ANY step fails, investigate Pitfall #15 and Lesson LL-001</step>
+    </fresh_browser_test_checklist>
 
     <csrf_quick_check>
       <description>Run this check before ANY deployment to prevent CSRF errors</description>
