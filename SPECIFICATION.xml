@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   SentinelDLP Project Specification
-  Version: 1.8.2
+  Version: 1.8.3
   Last Updated: 2026-01-15
   Purpose: Authoritative guardrail document for Claude instances working on this project
 
@@ -24,7 +24,7 @@
   - 3 Open Gaps: GAP-004 (Local LLM), GAP-006 (Load Balancing), GAP-007 (HTTPS)
 -->
 
-<sentineldlp_specification version="1.8.2">
+<sentineldlp_specification version="1.8.3">
 
   <!-- ═══════════════════════════════════════════════════════════════════════════
        SECTION 1: PROJECT IDENTITY & PURPOSE
@@ -1045,6 +1045,23 @@
        SECTION 7: VERSION HISTORY
        ═══════════════════════════════════════════════════════════════════════════ -->
   <version_history>
+    <version number="1.8.3" date="2026-01-15">
+      <author>Implementation Claude Instance</author>
+      <changes>
+        <change>BUGFIX: Fixed logout button SVG icon not visible due to missing dimensions</change>
+        <change>Added explicit width/height (20px) for logout button SVG</change>
+        <change>Added display: flex and align-items/justify-content for button centering</change>
+      </changes>
+      <affected_files>
+        <file>/frontend/index.html - Updated .logout-btn CSS styling</file>
+      </affected_files>
+      <test_results>
+        <test name="Logout Button Visible">PASS - SVG icon properly sized</test>
+        <test name="Logout API">PASS - Returns success and clears cookies</test>
+        <test name="Session Cleared">PASS - localStorage and cookies removed</test>
+      </test_results>
+    </version>
+
     <version number="1.8.2" date="2026-01-15">
       <author>Implementation Claude Instance</author>
       <changes>
@@ -1146,8 +1163,8 @@
   <quick_reference>
     <summary>
       <item key="Project">SentinelDLP - Enterprise DLP Tool</item>
-      <item key="Specification Version">1.8.2</item>
-      <item key="Implementation Version">1.8.2 (CSRF Compliance Complete)</item>
+      <item key="Specification Version">1.8.3</item>
+      <item key="Implementation Version">1.8.3 (Logout Button Fixed)</item>
       <item key="Validation Score">99/100 - ENTERPRISE_READY_SECURITY_HARDENED</item>
       <item key="Authentication">JWT + RBAC + LDAP + OWASP Security (Phase 1+2 Complete)</item>
       <item key="Security Features">HttpOnly Cookies, CSRF Protection, Rate Limiting, Security Headers</item>
