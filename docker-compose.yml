@@ -1,12 +1,41 @@
 # SentinelDLP Docker Compose Configuration
-# 
+#
 # Usage:
 #   docker compose up -d          # Start all services
 #   docker compose down           # Stop all services
 #   docker compose logs -f        # View logs
 #   docker compose ps             # Check status
+#
+# FR-005/GAP-001: Redis + Celery queue system for 1000+ concurrent users
 
 services:
+  # ============================================
+  # Redis Service (Message Broker for Celery)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: sentineldlp-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - sentineldlp-redis:/data
+    networks:
+      - sentineldlp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
   # ============================================
   # Backend API Service (FastAPI)
   # ============================================
@@ -27,6 +56,10 @@ services:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=elastic
       - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      # Redis Configuration (FR-005/GAP-001)
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_RESULT_BACKEND=redis://redis:6379/1
+      - CELERY_ENABLED=${CELERY_ENABLED:-true}
     volumes:
       # Persist incident data
       - sentineldlp-data:/app/data
@@ -36,6 +69,9 @@ services:
       - sentineldlp-config:/app/data/config
     networks:
       - sentineldlp-network
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/stats"]
       interval: 30s
@@ -43,6 +79,52 @@ services:
       retries: 3
       start_period: 10s
     # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================
+  # Celery Worker Service (FR-005/GAP-001)
+  # ============================================
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: sentineldlp-celery-worker
+    restart: unless-stopped
+    command: celery -A celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4}
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+      - MAX_TOKENS=${MAX_TOKENS:-4096}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - sentineldlp-data:/app/data
+      - sentineldlp-uploads:/app/data/uploads
+      - sentineldlp-config:/app/data/config
+    networks:
+      - sentineldlp-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -196,3 +278,6 @@ volumes:
   sentineldlp-esdata:
     driver: local
     name: sentineldlp-esdata
+  sentineldlp-redis:
+    driver: local
+    name: sentineldlp-redis

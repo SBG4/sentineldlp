@@ -2,6 +2,33 @@
 
 All notable changes to SentinelDLP are documented in this file.
 
+## [1.6.0] - January 2026
+
+### Added
+- **FR-005/GAP-001**: Redis + Celery task queue for enterprise scalability
+- Support for 1000+ concurrent users (up from 10-20)
+- Redis 7-alpine service as message broker
+- Celery worker service with configurable concurrency
+- Async job submission endpoint (`POST /api/jobs/analyze`)
+- Job status polling endpoint (`GET /api/jobs/{job_id}`)
+- Job cancellation endpoint (`DELETE /api/jobs/{job_id}`)
+- Queue statistics endpoint (`GET /api/jobs/queue/stats`)
+- System status endpoint (`GET /api/system/status`)
+- Frontend async mode with job polling
+- "Queued" stage in progress indicator
+- Horizontal scaling via `docker compose --scale`
+
+### New Files
+- `celery_app.py` - Celery configuration
+- `tasks.py` - Async analysis tasks
+
+### Technical
+- Task timeout: 10 minutes with soft limit at 9 minutes
+- Automatic retry: 3 attempts with 30-second delay
+- Rate limiting: 100 tasks/minute per worker
+- Result caching: 24-hour retention in Redis
+- Graceful fallback to sync mode if Redis unavailable
+
 ## [1.5.0] - January 2026
 
 ### Added

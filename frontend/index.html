@@ -1005,13 +1005,17 @@
 
             // Upload progress and processing stage tracking
             const [uploadProgress, setUploadProgress] = useState({
-                stage: 'idle', // 'idle' | 'uploading' | 'processing' | 'analyzing'
+                stage: 'idle', // 'idle' | 'uploading' | 'processing' | 'analyzing' | 'queued'
                 percent: 0,
                 filename: '',
                 filesize: '',
                 bytesUploaded: 0,
-                bytesTotal: 0
+                bytesTotal: 0,
+                jobId: null  // FR-005: Async job tracking
             });
+
+            // FR-005: Async mode (uses Celery queue for high-load scenarios)
+            const [asyncMode, setAsyncMode] = useState(false);
 
             // FR-004: Oversized file modal state
             const [oversizedModal, setOversizedModal] = useState({
@@ -1187,7 +1191,104 @@
                         filename: '',
                         filesize: '',
                         bytesUploaded: 0,
-                        bytesTotal: 0
+                        bytesTotal: 0,
+                        jobId: null
+                    });
+                }
+            };
+
+            // FR-005: Async file analysis using Celery queue
+            const analyzeFileAsync = async (file) => {
+                setLoading(true);
+                const fileSizeDisplay = formatFileSize(file.size);
+
+                // Initialize progress tracking
+                setUploadProgress({
+                    stage: 'uploading',
+                    percent: 0,
+                    filename: file.name,
+                    filesize: fileSizeDisplay,
+                    bytesUploaded: 0,
+                    bytesTotal: file.size,
+                    jobId: null
+                });
+
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    // Submit to async endpoint
+                    const submitResponse = await fetch(`${API_BASE}/api/jobs/analyze`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!submitResponse.ok) {
+                        const error = await submitResponse.json();
+                        throw new Error(error.detail || 'Failed to submit job');
+                    }
+
+                    const { job_id, filename } = await submitResponse.json();
+
+                    // Update state to queued
+                    setUploadProgress(prev => ({
+                        ...prev,
+                        stage: 'queued',
+                        percent: 0,
+                        jobId: job_id
+                    }));
+
+                    addToast('Analysis job submitted to queue', 'info');
+
+                    // Poll for job status
+                    let completed = false;
+                    let pollCount = 0;
+                    const maxPolls = 360; // 30 minutes at 5-second intervals
+
+                    while (!completed && pollCount < maxPolls) {
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        pollCount++;
+
+                        const statusResponse = await fetch(`${API_BASE}/api/jobs/${job_id}`);
+                        const statusData = await statusResponse.json();
+
+                        if (statusData.status === 'ANALYZING') {
+                            setUploadProgress(prev => ({
+                                ...prev,
+                                stage: 'analyzing',
+                                percent: statusData.progress || 50
+                            }));
+                        } else if (statusData.status === 'SUCCESS' && statusData.ready) {
+                            completed = true;
+                            setResult(statusData.result);
+                            onAnalysisComplete();
+                            addToast(`Analysis complete: ${statusData.result.sensitivity_level}`, 'success');
+                        } else if (statusData.status === 'FAILURE') {
+                            completed = true;
+                            throw new Error(statusData.error || 'Analysis job failed');
+                        } else if (statusData.status === 'REVOKED') {
+                            completed = true;
+                            throw new Error('Analysis job was cancelled');
+                        }
+                        // PENDING status - keep polling
+                    }
+
+                    if (!completed) {
+                        throw new Error('Analysis timed out. Please try again.');
+                    }
+
+                } catch (err) {
+                    addToast(err.message, 'error');
+                } finally {
+                    setLoading(false);
+                    setUploadProgress({
+                        stage: 'idle',
+                        percent: 0,
+                        filename: '',
+                        filesize: '',
+                        bytesUploaded: 0,
+                        bytesTotal: 0,
+                        jobId: null
                     });
                 }
             };
@@ -1235,8 +1336,13 @@
                     ];
                     const ext = file.name.split('.').pop()?.toLowerCase();
 
+                    // FR-005: Use async mode if enabled (for high-load scenarios)
                     // All supported types go through file endpoint for proper processing
-                    analyzeFile(file);
+                    if (asyncMode) {
+                        analyzeFileAsync(file);
+                    } else {
+                        analyzeFile(file);
+                    }
                 });
             };
             
@@ -1297,8 +1403,11 @@
                                         {uploadProgress.stage === 'processing' && (
                                             <>Processing document (text extraction)...</>
                                         )}
+                                        {uploadProgress.stage === 'queued' && (
+                                            <>Queued for analysis (Job: {uploadProgress.jobId?.slice(0, 8)}...)</>
+                                        )}
                                         {uploadProgress.stage === 'analyzing' && (
-                                            <>Analyzing with Claude AI...</>
+                                            <>Analyzing with Claude AI...{uploadProgress.percent > 0 ? ` ${uploadProgress.percent}%` : ''}</>
                                         )}
                                         {uploadProgress.stage === 'idle' && (
                                             <>Preparing...</>

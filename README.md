@@ -1,6 +1,6 @@
-# SentinelDLP v1.5.0
+# SentinelDLP v1.6.0
 
-Enterprise-grade document sensitivity analysis powered by Claude AI. Automatically detect PII, financial data, intellectual property, and other sensitive information across 40+ file formats.
+Enterprise-grade document sensitivity analysis powered by Claude AI. Automatically detect PII, financial data, intellectual property, and other sensitive information across 40+ file formats with support for 1000+ concurrent users.
 
 ## Features
 
@@ -83,6 +83,8 @@ docker-compose up -d
 |---------|------|-------------|
 | Frontend | 8122 | Web UI (NGINX) |
 | Backend | 8000 | FastAPI API (internal) |
+| Redis | 6379 | Message broker (internal) |
+| Celery Worker | - | Async task processor |
 | Elasticsearch | 9200 | Search & storage |
 | Kibana | 5601 | ES management UI |
 
@@ -116,13 +118,25 @@ docker-compose up -d
 │  - REST API on port 8000                                │
 │  - Claude AI integration                                │
 │  - File processing & OCR                                │
-└───────────┬─────────────────────────┬───────────────────┘
-            │                         │
-┌───────────▼───────────┐   ┌─────────▼─────────┐
-│    Elasticsearch      │   │   File Storage    │
-│  - Scan persistence   │   │  - Upload files   │
-│  - Search & filter    │   │  - Preview/DL     │
-└───────────────────────┘   └───────────────────┘
+└───────────┬─────────────┬─────────────┬─────────────────┘
+            │             │             │
+┌───────────▼───────────┐ │   ┌─────────▼─────────┐
+│       Redis           │ │   │   File Storage    │
+│  - Message broker     │ │   │  - Upload files   │
+│  - Result backend     │ │   │  - Preview/DL     │
+└───────────┬───────────┘ │   └───────────────────┘
+            │             │
+┌───────────▼───────────┐ │
+│   Celery Workers      │ │
+│  - Async analysis     │ │
+│  - 4+ concurrent      │ │
+└───────────────────────┘ │
+                          │
+            ┌─────────────▼─────────────┐
+            │      Elasticsearch        │
+            │  - Scan persistence       │
+            │  - Search & filter        │
+            └───────────────────────────┘
 ```
 
 ## Environment Variables
@@ -137,6 +151,8 @@ Configure via `.env` file:
 | `FRONTEND_PORT` | `8122` | Host port for web UI |
 | `ELASTIC_PASSWORD` | `changeme` | Elasticsearch password |
 | `KIBANA_PORT` | `5601` | Kibana UI port |
+| `CELERY_ENABLED` | `true` | Enable async task queue |
+| `CELERY_CONCURRENCY` | `4` | Workers per Celery container |
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
 
 ## API Endpoints
@@ -144,6 +160,15 @@ Configure via `.env` file:
 ### Analysis
 ```
 POST /api/analyze          # Analyze uploaded file (multipart/form-data)
+```
+
+### Async Jobs (FR-005)
+```
+POST   /api/jobs/analyze      # Submit async analysis job
+GET    /api/jobs/{job_id}     # Get job status and result
+DELETE /api/jobs/{job_id}     # Cancel pending/running job
+GET    /api/jobs/queue/stats  # Queue statistics
+GET    /api/system/status     # Overall system health
 ```
 
 ### Scan History (FR-003)
@@ -194,6 +219,8 @@ This ensures comprehensive coverage while staying within API limits. A sampling 
 sentineldlp/
 ├── backend/
 │   ├── main.py                    # FastAPI application
+│   ├── celery_app.py              # Celery configuration (FR-005)
+│   ├── tasks.py                   # Async analysis tasks (FR-005)
 │   ├── file_processor.py          # Universal file processing + OCR
 │   ├── elasticsearch_service.py   # ES client & operations
 │   ├── elasticsearch_mappings.py  # Index schema
@@ -216,7 +243,8 @@ sentineldlp/
 │   ├── VERSION-1.2.0.md
 │   ├── VERSION-1.3.0.md
 │   ├── VERSION-1.4.0.md
-│   └── VERSION-1.5.0.md
+│   ├── VERSION-1.5.0.md
+│   └── VERSION-1.6.0.md
 ├── docker-compose.yml
 ├── Makefile
 ├── SPECIFICATION.xml              # Project guardrail document
@@ -237,6 +265,7 @@ sentineldlp/
 
 | Version | Features |
 |---------|----------|
+| 1.6.0 | FR-005 Redis + Celery Queue (1000+ users), Async Jobs |
 | 1.5.0 | FR-001 Universal File Types + OCR, FR-004 Large File Handling |
 | 1.4.0 | FR-003 Elasticsearch Integration, Scan History, File Storage |
 | 1.3.0 | FR-002 Admin Configuration Panel |

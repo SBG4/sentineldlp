@@ -1,6 +1,7 @@
 """
 Sensitive Information Detection System - Backend API
 FastAPI service with Claude API integration for document analysis
+FR-005/GAP-001: Redis + Celery queue system for 1000+ concurrent users
 """
 
 import os
@@ -17,6 +18,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 import anthropic
+
+# Celery imports (FR-005/GAP-001)
+CELERY_ENABLED = os.getenv("CELERY_ENABLED", "true").lower() == "true"
+celery_app = None
+analyze_document_task = None
+
+if CELERY_ENABLED:
+    try:
+        from celery.result import AsyncResult
+        from celery_app import celery_app
+        from tasks import analyze_document_task
+    except ImportError as e:
+        print(f"Warning: Celery not available, running in sync mode: {e}")
+        CELERY_ENABLED = False
 
 # Import configuration management (FR-002)
 from config_manager import ConfigManager, SystemConfig, LLMProvider
@@ -1432,6 +1447,290 @@ async def get_config_status():
             }
         }
     }
+
+
+# ============== Async Job Endpoints (FR-005/GAP-001) ==============
+
+class AsyncJobRequest(BaseModel):
+    """Request model for async analysis."""
+    document_text: Optional[str] = None
+    filename: str = "unknown"
+    filetype: str = "unknown"
+    filesize: str = "unknown"
+
+
+@app.post("/api/jobs/analyze")
+async def submit_async_analysis(file: UploadFile = File(...), request: Request = None):
+    """
+    Submit a file for async analysis via Celery queue.
+
+    Returns a job_id that can be used to check status and retrieve results.
+    Falls back to sync processing if Celery is not available.
+    """
+    if not CELERY_ENABLED:
+        # Fall back to sync processing
+        return await analyze_file(file, request)
+
+    settings = load_settings()
+    config = config_manager.load_config()
+
+    if not settings.api_key:
+        raise HTTPException(status_code=400, detail="API key not configured")
+
+    # Read and process file
+    content = await file.read()
+    filesize_bytes = len(content)
+    filename = file.filename or "unknown"
+
+    # File size validation
+    MAX_FILE_SIZE_GB = 10
+    MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_GB * 1024 * 1024 * 1024
+    if filesize_bytes > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large: {filesize_bytes / (1024**3):.2f} GB. Maximum: {MAX_FILE_SIZE_GB} GB."
+        )
+
+    # Process file
+    try:
+        processed = await file_processor.process_file(content, filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File processing failed: {str(e)}")
+
+    document_text = processed.text_content
+    if not document_text or not document_text.strip():
+        raise HTTPException(status_code=400, detail="Could not extract text from file")
+
+    filetype = processed.detected_type.extension
+    filesize = f"{filesize_bytes} bytes"
+
+    # Store file if needed
+    file_id = str(uuid.uuid4())
+    file_stored = False
+    if es_service.is_enabled and not config.processing.auto_delete_uploads:
+        try:
+            file_id, _ = await file_storage.store_file(content, filename, file_id)
+            file_stored = True
+        except Exception as e:
+            print(f"Warning: Failed to store file: {e}")
+
+    # Submit to Celery queue
+    task = analyze_document_task.delay(
+        document_text=document_text,
+        filename=filename,
+        filetype=filetype,
+        filesize=filesize,
+        filesize_bytes=filesize_bytes,
+        file_id=file_id if file_stored else None,
+        file_stored=file_stored,
+        client_ip=request.client.host if request and request.client else None,
+        user_agent=request.headers.get("user-agent") if request else None,
+        ocr_applied=processed.ocr_applied,
+        page_count=processed.page_count,
+        word_count=processed.word_count,
+        detected_mime_type=processed.detected_type.mime_type,
+        file_category=processed.detected_type.category.value,
+        extraction_warnings=processed.extraction_warnings
+    )
+
+    return {
+        "job_id": task.id,
+        "status": "PENDING",
+        "message": "Analysis job submitted to queue",
+        "filename": filename,
+        "filesize": filesize,
+        "queue_position": None  # Could be calculated if needed
+    }
+
+
+@app.get("/api/jobs/{job_id}")
+async def get_job_status(job_id: str):
+    """
+    Get the status and result of an async analysis job.
+
+    Status values:
+    - PENDING: Job is waiting in queue
+    - ANALYZING: Job is being processed
+    - SUCCESS: Job completed successfully (result included)
+    - FAILURE: Job failed (error included)
+    - REVOKED: Job was cancelled
+    """
+    if not CELERY_ENABLED:
+        raise HTTPException(status_code=400, detail="Async jobs not enabled")
+
+    try:
+        task = AsyncResult(job_id, app=celery_app)
+
+        response = {
+            "job_id": job_id,
+            "status": task.status,
+            "ready": task.ready(),
+            "successful": task.successful() if task.ready() else None
+        }
+
+        # Add progress info for ANALYZING state
+        if task.status == "ANALYZING" and task.info:
+            response["progress"] = task.info.get("progress", 0)
+            response["stage"] = task.info.get("stage", "Processing")
+            response["filename"] = task.info.get("filename")
+
+        # Add result if complete
+        if task.ready():
+            if task.successful():
+                result = task.result
+                response["result"] = result
+
+                # Index to ES if not already done
+                if es_service.is_enabled and result.get("status") == "completed":
+                    try:
+                        await es_service.index_scan(result)
+                    except Exception as e:
+                        print(f"Warning: Failed to index to ES: {e}")
+            else:
+                response["error"] = str(task.result) if task.result else "Unknown error"
+
+        return response
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get job status: {str(e)}")
+
+
+@app.delete("/api/jobs/{job_id}")
+async def cancel_job(job_id: str):
+    """Cancel a pending or running job."""
+    if not CELERY_ENABLED:
+        raise HTTPException(status_code=400, detail="Async jobs not enabled")
+
+    try:
+        task = AsyncResult(job_id, app=celery_app)
+        task.revoke(terminate=True)
+        return {"job_id": job_id, "status": "REVOKED", "message": "Job cancelled"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cancel job: {str(e)}")
+
+
+@app.get("/api/jobs/queue/stats")
+async def get_queue_stats():
+    """
+    Get queue statistics for monitoring.
+
+    Returns:
+    - Active workers count
+    - Tasks in queue
+    - Tasks being processed
+    - Tasks completed (recent)
+    """
+    if not CELERY_ENABLED:
+        return {
+            "celery_enabled": False,
+            "message": "Running in synchronous mode"
+        }
+
+    try:
+        # Get worker stats
+        inspect = celery_app.control.inspect()
+
+        # Active tasks (currently being processed)
+        active = inspect.active() or {}
+        active_count = sum(len(tasks) for tasks in active.values())
+
+        # Reserved tasks (in queue, assigned to workers)
+        reserved = inspect.reserved() or {}
+        reserved_count = sum(len(tasks) for tasks in reserved.values())
+
+        # Scheduled tasks
+        scheduled = inspect.scheduled() or {}
+        scheduled_count = sum(len(tasks) for tasks in scheduled.values())
+
+        # Worker count
+        worker_count = len(active.keys())
+
+        # Get queue length from Redis
+        queue_length = 0
+        try:
+            import redis
+            redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+            r = redis.from_url(redis_url)
+            queue_length = r.llen("sentineldlp_analysis")
+        except Exception:
+            pass
+
+        return {
+            "celery_enabled": True,
+            "workers": {
+                "count": worker_count,
+                "names": list(active.keys())
+            },
+            "tasks": {
+                "active": active_count,
+                "reserved": reserved_count,
+                "scheduled": scheduled_count,
+                "queued": queue_length
+            },
+            "status": "healthy" if worker_count > 0 else "no_workers"
+        }
+
+    except Exception as e:
+        return {
+            "celery_enabled": True,
+            "status": "error",
+            "error": str(e)
+        }
+
+
+@app.get("/api/system/status")
+async def get_system_status():
+    """
+    Get overall system status including all services.
+    """
+    status = {
+        "api": "healthy",
+        "version": "1.6.0",
+        "celery_enabled": CELERY_ENABLED,
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+    # Check Elasticsearch
+    if es_service.is_enabled:
+        try:
+            es_healthy = await es_service.health_check()
+            status["elasticsearch"] = "healthy" if es_healthy else "unhealthy"
+        except Exception:
+            status["elasticsearch"] = "error"
+    else:
+        status["elasticsearch"] = "disabled"
+
+    # Check Redis/Celery
+    if CELERY_ENABLED:
+        try:
+            import redis
+            redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+            r = redis.from_url(redis_url)
+            r.ping()
+            status["redis"] = "healthy"
+
+            # Check workers
+            inspect = celery_app.control.inspect()
+            workers = inspect.ping() or {}
+            status["celery_workers"] = len(workers)
+        except Exception as e:
+            status["redis"] = "error"
+            status["celery_workers"] = 0
+    else:
+        status["redis"] = "disabled"
+        status["celery_workers"] = 0
+
+    # Check file storage
+    try:
+        storage_stats = await file_storage.get_storage_stats()
+        status["file_storage"] = "healthy"
+        status["files_stored"] = storage_stats.get("file_count", 0)
+    except Exception:
+        status["file_storage"] = "error"
+
+    return status
 
 
 if __name__ == "__main__":

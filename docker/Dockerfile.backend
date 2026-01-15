@@ -56,6 +56,8 @@ COPY backend/elasticsearch_mappings.py /app/elasticsearch_mappings.py
 COPY backend/file_storage_service.py /app/file_storage_service.py
 COPY backend/file_processor.py /app/file_processor.py
 COPY backend/migrate_to_elasticsearch.py /app/migrate_to_elasticsearch.py
+COPY backend/celery_app.py /app/celery_app.py
+COPY backend/tasks.py /app/tasks.py
 
 # Copy entrypoint script
 COPY docker/entrypoint.sh /app/entrypoint.sh
