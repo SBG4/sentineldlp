@@ -44,6 +44,23 @@ from file_storage_service import FileStorageService
 # Import universal file processor (FR-001)
 from file_processor import FileProcessor, get_file_processor, ProcessedFile
 
+# Import authentication modules (FR-006/GAP-002)
+from auth_service import auth_service, auth_audit, UserRole, AuthProvider, ROLE_PERMISSIONS
+from user_manager import user_manager
+from ldap_connector import ldap_connector
+
+# Import security middleware (FR-006 Phase 2)
+from security_middleware import (
+    SecurityHeadersMiddleware,
+    CSRFMiddleware,
+    CSRFProtection,
+    SecureCookies,
+    check_rate_limit,
+    record_attempt,
+    reset_rate_limit,
+    RATE_LIMIT_ENABLED
+)
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Sensitive Information Detection API",
@@ -57,8 +74,16 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "X-CSRF-Token"],  # Allow CSRF header
+    expose_headers=["X-RateLimit-Remaining", "X-RateLimit-Reset"],  # Expose rate limit headers
 )
+
+# Security middleware (FR-006 Phase 2)
+# Note: Middleware order matters - first added = last executed
+# CSRF middleware validates tokens for state-changing requests
+app.add_middleware(CSRFMiddleware)
+# Security headers added to all responses
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Data storage paths - handle both Docker (/app) and local development
 # In Docker: WORKDIR is /app, data should be at /app/data
@@ -177,6 +202,123 @@ class Incident(BaseModel):
     departments_affected: List[str]
     status: str
     hash: str
+
+
+# ============== Authentication Models (FR-006/GAP-002) ==============
+
+class LoginRequest(BaseModel):
+    """Login request with username and password."""
+    username: str
+    password: str
+    provider: Optional[str] = "auto"  # auto, local, ldap
+
+class TokenResponse(BaseModel):
+    """JWT token response."""
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: dict
+
+class RefreshTokenRequest(BaseModel):
+    """Token refresh request."""
+    refresh_token: str
+
+class PasswordChangeRequest(BaseModel):
+    """Password change request."""
+    current_password: Optional[str] = None
+    new_password: str
+
+class UserCreateRequest(BaseModel):
+    """Request to create a new user."""
+    username: str
+    password: str
+    email: str
+    role: str = "viewer"
+    display_name: Optional[str] = None
+
+class UserUpdateRequest(BaseModel):
+    """Request to update user properties."""
+    email: Optional[str] = None
+    role: Optional[str] = None
+    display_name: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+# ============== Authentication Dependency ==============
+
+AUTH_MODE = os.getenv("AUTH_MODE", "hybrid")
+
+async def get_current_user(request: Request) -> dict:
+    """
+    FastAPI dependency to get current authenticated user from JWT token.
+
+    Extracts and validates JWT from Authorization header.
+    Returns user payload if valid, raises HTTPException if not.
+    """
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    token = auth_header.split(" ")[1]
+    payload = auth_service.verify_token(token, token_type="access")
+
+    if not payload:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    return payload
+
+async def get_optional_user(request: Request) -> Optional[dict]:
+    """
+    Optional authentication - returns None if not authenticated.
+    Use for endpoints that work with or without auth.
+    """
+    try:
+        return await get_current_user(request)
+    except HTTPException:
+        return None
+
+def require_role(required_roles: List[UserRole]):
+    """
+    Dependency factory to require specific roles.
+
+    Usage: Depends(require_role([UserRole.ADMIN]))
+    """
+    async def role_checker(user: dict = Depends(get_current_user)) -> dict:
+        user_role = UserRole(user.get("role", "viewer"))
+        if user_role not in required_roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Insufficient permissions. Required: {[r.value for r in required_roles]}"
+            )
+        return user
+    return role_checker
+
+def require_permission(permission: str):
+    """
+    Dependency factory to require specific permission.
+
+    Usage: Depends(require_permission("scans:create"))
+    """
+    async def permission_checker(user: dict = Depends(get_current_user)) -> dict:
+        user_role = UserRole(user.get("role", "viewer"))
+        if not auth_service.has_permission(user_role, permission):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission denied: {permission}"
+            )
+        return user
+    return permission_checker
+
 
 # ============== Storage Functions ==============
 
@@ -1678,6 +1820,735 @@ async def get_queue_stats():
             "status": "error",
             "error": str(e)
         }
+
+
+# ============== Authentication Endpoints (FR-006/GAP-002) ==============
+
+@app.post("/api/auth/login")
+async def login(login_request: LoginRequest, request: Request):
+    """
+    Authenticate user and return JWT tokens.
+
+    Supports three provider modes:
+    - auto: Try local first, then LDAP if configured
+    - local: Only authenticate against local user database
+    - ldap: Only authenticate against Active Directory
+
+    Returns access_token (in body) and sets refresh_token as HttpOnly cookie.
+
+    Security (FR-006 Phase 2):
+    - Rate limiting: 5 attempts per 15 minutes per IP+username
+    - HttpOnly cookie for refresh token (XSS protection)
+    - CSRF token set on successful login
+    """
+    ip_address = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    provider = login_request.provider or "auto"
+
+    # FR-006 Phase 2: Rate limiting check
+    rate_check = check_rate_limit(request, "login", login_request.username)
+    if rate_check["limited"]:
+        auth_audit.log_event(
+            event_type="LOGIN_RATE_LIMITED",
+            username=login_request.username,
+            success=False,
+            provider=provider,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details={"retry_after": rate_check["retry_after"]}
+        )
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many login attempts. Try again in {rate_check['retry_after']} seconds.",
+            headers={
+                "Retry-After": str(rate_check["retry_after"]),
+                "X-RateLimit-Remaining": "0"
+            }
+        )
+
+    user_data = None
+    auth_provider = None
+
+    # Try authentication based on provider mode
+    if provider in ["auto", "local"]:
+        # Try local authentication
+        local_user, error = user_manager.authenticate(
+            login_request.username,
+            login_request.password
+        )
+        if local_user:
+            user_data = {
+                "id": local_user.id,
+                "username": local_user.username,
+                "email": local_user.email,
+                "role": local_user.role,
+                "display_name": local_user.display_name,
+                "must_change_password": local_user.must_change_password
+            }
+            auth_provider = AuthProvider.LOCAL
+
+            # Log successful login
+            auth_audit.log_event(
+                event_type="LOGIN_SUCCESS",
+                username=login_request.username,
+                success=True,
+                provider="local",
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+
+    # Try LDAP if local failed and LDAP is configured
+    if not user_data and provider in ["auto", "ldap"]:
+        if ldap_connector.is_enabled:
+            ldap_user = ldap_connector.authenticate(
+                login_request.username,
+                login_request.password
+            )
+            if ldap_user:
+                user_data = {
+                    "id": ldap_user.distinguished_name,
+                    "username": ldap_user.username,
+                    "email": ldap_user.email or f"{ldap_user.username}@{ldap_connector.domain}",
+                    "role": ldap_connector.get_role_for_user(ldap_user).value,
+                    "display_name": ldap_user.display_name,
+                    "must_change_password": False,
+                    "groups": ldap_user.groups
+                }
+                auth_provider = AuthProvider.LDAP
+
+                # Log successful LDAP login
+                auth_audit.log_event(
+                    event_type="LOGIN_SUCCESS",
+                    username=login_request.username,
+                    success=True,
+                    provider="ldap",
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details={"groups": ldap_user.groups[:5]}  # Log first 5 groups
+                )
+
+    # Authentication failed
+    if not user_data:
+        # FR-006 Phase 2: Record failed attempt for rate limiting
+        record_attempt(request, "login", login_request.username)
+
+        # Log failed login
+        auth_audit.log_event(
+            event_type="LOGIN_FAILED",
+            username=login_request.username,
+            success=False,
+            provider=provider,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        # Include remaining attempts in response
+        rate_check = check_rate_limit(request, "login", login_request.username)
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password",
+            headers={"X-RateLimit-Remaining": str(rate_check["remaining"])}
+        )
+
+    # FR-006 Phase 2: Reset rate limit on successful login
+    reset_rate_limit(request, "login", login_request.username)
+
+    # Generate tokens
+    role = UserRole(user_data["role"])
+    tokens = auth_service.create_token_pair(
+        user_id=user_data["id"],
+        username=user_data["username"],
+        role=role,
+        provider=auth_provider,
+        additional_claims={"email": user_data["email"]}
+    )
+
+    # FR-006 Phase 2: Build response with secure cookies
+    response_data = {
+        "access_token": tokens["access_token"],
+        "token_type": tokens["token_type"],
+        "expires_in": tokens["expires_in"],
+        "user": {
+            "id": user_data["id"],
+            "username": user_data["username"],
+            "email": user_data["email"],
+            "role": user_data["role"],
+            "display_name": user_data["display_name"],
+            "must_change_password": user_data.get("must_change_password", False),
+            "provider": auth_provider.value,
+            "permissions": ROLE_PERMISSIONS.get(role, [])
+        }
+    }
+
+    # Create response with cookies
+    response = JSONResponse(content=response_data)
+
+    # Set refresh token in HttpOnly cookie (XSS protection)
+    SecureCookies.set_refresh_token(response, tokens["refresh_token"])
+
+    # Set CSRF token cookie (readable by JavaScript for header)
+    csrf_token = CSRFProtection.generate_token()
+    CSRFProtection.set_csrf_cookie(response, csrf_token)
+
+    return response
+
+
+class RefreshTokenRequestOptional(BaseModel):
+    """Optional refresh token in body (can also come from cookie)."""
+    refresh_token: Optional[str] = None
+
+
+@app.post("/api/auth/refresh")
+async def refresh_token_endpoint(
+    request: Request,
+    refresh_request: RefreshTokenRequestOptional = None
+):
+    """
+    Get new access token using refresh token.
+
+    FR-006 Phase 2: Refresh token is read from:
+    1. HttpOnly cookie (preferred, secure against XSS)
+    2. Request body (fallback for API clients)
+
+    The refresh token remains valid until it expires or is revoked.
+    """
+    # Try to get refresh token from cookie first (more secure)
+    token = SecureCookies.get_refresh_token(request)
+
+    # Fall back to request body if no cookie
+    if not token and refresh_request and refresh_request.refresh_token:
+        token = refresh_request.refresh_token
+
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Refresh token required (in cookie or request body)"
+        )
+
+    result = auth_service.refresh_access_token(token)
+
+    if not result:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired refresh token"
+        )
+
+    return result
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request, user: dict = Depends(get_current_user)):
+    """
+    Logout user by revoking refresh token.
+
+    FR-006 Phase 2: Reads refresh token from cookie or body, clears all auth cookies.
+    """
+    ip_address = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    # Try to get refresh token from cookie first
+    refresh_token = SecureCookies.get_refresh_token(request)
+
+    # Fall back to request body
+    if not refresh_token:
+        try:
+            body = await request.json()
+            refresh_token = body.get("refresh_token")
+        except Exception:
+            pass
+
+    # Revoke the refresh token if found
+    if refresh_token:
+        auth_service.revoke_refresh_token(refresh_token)
+
+    # Log logout
+    auth_audit.log_event(
+        event_type="LOGOUT",
+        username=user.get("username", "unknown"),
+        success=True,
+        provider=user.get("provider", "unknown"),
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+    # FR-006 Phase 2: Clear all auth cookies
+    response = JSONResponse(
+        content={"status": "logged_out", "message": "Successfully logged out"}
+    )
+    SecureCookies.clear_all_auth_cookies(response)
+
+    return response
+
+
+@app.get("/api/auth/me")
+async def get_current_user_info(user: dict = Depends(get_current_user)):
+    """
+    Get current user information from JWT token.
+
+    Returns user details including role and permissions.
+    """
+    role = UserRole(user.get("role", "viewer"))
+
+    return {
+        "id": user.get("sub"),
+        "username": user.get("username"),
+        "email": user.get("email"),
+        "role": user.get("role"),
+        "provider": user.get("provider"),
+        "permissions": auth_service.get_role_permissions(role),
+        "token_expires": user.get("exp")
+    }
+
+
+@app.post("/api/auth/change-password")
+async def change_password(
+    password_request: PasswordChangeRequest,
+    request: Request,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Change current user's password.
+
+    For local users only. LDAP users must change password via AD.
+    """
+    if user.get("provider") == "ldap":
+        raise HTTPException(
+            status_code=400,
+            detail="LDAP users must change password via Active Directory"
+        )
+
+    ip_address = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    user_id = user.get("sub")
+
+    # Verify current password if provided
+    local_user = user_manager.get_user(user_id)
+    if not local_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if password_request.current_password:
+        if not auth_service.verify_password(
+            password_request.current_password,
+            local_user.password_hash
+        ):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    # Change password
+    try:
+        success = user_manager.change_password(user_id, password_request.new_password)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to change password")
+
+        # Log password change
+        auth_audit.log_event(
+            event_type="PASSWORD_CHANGED",
+            username=user.get("username"),
+            success=True,
+            provider="local",
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        return {"status": "success", "message": "Password changed successfully"}
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============== User Management Endpoints (FR-006/GAP-002) ==============
+
+@app.get("/api/users")
+async def list_users(
+    role: Optional[str] = None,
+    enabled_only: bool = False,
+    user: dict = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    List all local users. Admin only.
+
+    Supports filtering by role and enabled status.
+    """
+    role_filter = UserRole(role) if role else None
+    users = user_manager.list_users(role=role_filter, enabled_only=enabled_only)
+
+    return {
+        "users": [u.to_dict(include_password=False) for u in users],
+        "total": len(users)
+    }
+
+
+@app.post("/api/users")
+async def create_user(
+    user_request: UserCreateRequest,
+    request: Request,
+    admin: dict = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    Create a new local user. Admin only.
+    """
+    ip_address = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    try:
+        role = UserRole(user_request.role)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid role: {user_request.role}. Valid roles: admin, analyst, viewer"
+        )
+
+    try:
+        new_user = user_manager.create_user(
+            username=user_request.username,
+            password=user_request.password,
+            email=user_request.email,
+            role=role,
+            display_name=user_request.display_name
+        )
+
+        # Log user creation
+        auth_audit.log_event(
+            event_type="USER_CREATED",
+            username=user_request.username,
+            success=True,
+            provider="local",
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details={"created_by": admin.get("username"), "role": role.value}
+        )
+
+        return {
+            "status": "created",
+            "user": new_user.to_dict(include_password=False)
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/users/stats")
+async def get_user_stats(admin: dict = Depends(require_role([UserRole.ADMIN]))):
+    """
+    Get user statistics. Admin only.
+    """
+    return user_manager.get_stats()
+
+
+@app.get("/api/users/{user_id}")
+async def get_user(
+    user_id: str,
+    admin: dict = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    Get user details by ID. Admin only.
+    """
+    user = user_manager.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user.to_dict(include_password=False)
+
+
+@app.put("/api/users/{user_id}")
+async def update_user(
+    user_id: str,
+    user_request: UserUpdateRequest,
+    request: Request,
+    admin: dict = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    Update user properties. Admin only.
+    """
+    ip_address = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    role = None
+    if user_request.role:
+        try:
+            role = UserRole(user_request.role)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid role: {user_request.role}"
+            )
+
+    try:
+        updated_user = user_manager.update_user(
+            user_id=user_id,
+            email=user_request.email,
+            role=role,
+            display_name=user_request.display_name,
+            enabled=user_request.enabled
+        )
+
+        if not updated_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Log update
+        auth_audit.log_event(
+            event_type="USER_UPDATED",
+            username=updated_user.username,
+            success=True,
+            provider="local",
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details={"updated_by": admin.get("username")}
+        )
+
+        return {
+            "status": "updated",
+            "user": updated_user.to_dict(include_password=False)
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    request: Request,
+    admin: dict = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    Delete user account. Admin only.
+    """
+    ip_address = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    user = user_manager.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        success = user_manager.delete_user(user_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete user")
+
+        # Log deletion
+        auth_audit.log_event(
+            event_type="USER_DELETED",
+            username=user.username,
+            success=True,
+            provider="local",
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details={"deleted_by": admin.get("username")}
+        )
+
+        return {"status": "deleted", "username": user.username}
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/users/{user_id}/reset-password")
+async def admin_reset_password(
+    user_id: str,
+    password_request: PasswordChangeRequest,
+    request: Request,
+    admin: dict = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    Admin reset user password. Sets must_change_password flag.
+    """
+    ip_address = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    user = user_manager.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        success = user_manager.change_password(
+            user_id,
+            password_request.new_password,
+            require_change=True  # Force password change on next login
+        )
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to reset password")
+
+        # Log password reset
+        auth_audit.log_event(
+            event_type="PASSWORD_RESET",
+            username=user.username,
+            success=True,
+            provider="local",
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details={"reset_by": admin.get("username")}
+        )
+
+        return {"status": "success", "message": f"Password reset for {user.username}"}
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/users/{user_id}/unlock")
+async def unlock_user(
+    user_id: str,
+    request: Request,
+    admin: dict = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    Unlock a locked user account. Admin only.
+    """
+    ip_address = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    user = user_manager.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    success = user_manager.reset_failed_attempts(user_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to unlock user")
+
+    # Log unlock
+    auth_audit.log_event(
+        event_type="USER_UNLOCKED",
+        username=user.username,
+        success=True,
+        provider="local",
+        ip_address=ip_address,
+        user_agent=user_agent,
+        details={"unlocked_by": admin.get("username")}
+    )
+
+    return {"status": "unlocked", "username": user.username}
+
+
+# ============== LDAP/AD Endpoints (FR-006/GAP-002) ==============
+
+@app.get("/api/ldap/status")
+async def get_ldap_status(admin: dict = Depends(require_role([UserRole.ADMIN]))):
+    """
+    Get LDAP/AD connection status. Admin only.
+    """
+    if not ldap_connector.is_enabled:
+        return {
+            "enabled": False,
+            "message": "LDAP is not configured"
+        }
+
+    return {
+        "enabled": True,
+        "server": ldap_connector.server,
+        "domain": ldap_connector.domain,
+        "base_dn": ldap_connector.base_dn,
+        "use_ssl": ldap_connector.use_ssl,
+        "use_starttls": ldap_connector.use_starttls
+    }
+
+
+@app.post("/api/ldap/test")
+async def test_ldap_connection(
+    request: Request,
+    admin: dict = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    Test LDAP/AD connection. Admin only.
+    """
+    if not ldap_connector.is_enabled:
+        raise HTTPException(status_code=400, detail="LDAP is not configured")
+
+    success, message = ldap_connector.test_connection()
+
+    if success:
+        return {
+            "status": "success",
+            "message": message,
+            "server": ldap_connector.server
+        }
+    else:
+        raise HTTPException(status_code=500, detail=message)
+
+
+@app.get("/api/ldap/groups")
+async def get_ldap_role_mappings(admin: dict = Depends(require_role([UserRole.ADMIN]))):
+    """
+    Get LDAP group to role mappings. Admin only.
+    """
+    if not ldap_connector.is_enabled:
+        raise HTTPException(status_code=400, detail="LDAP is not configured")
+
+    return {
+        "mappings": {
+            "admin_groups": ldap_connector.admin_groups,
+            "analyst_groups": ldap_connector.analyst_groups,
+            "viewer_groups": ldap_connector.viewer_groups,
+            "default_role": ldap_connector.default_role.value
+        }
+    }
+
+
+@app.get("/api/ldap/search")
+async def search_ldap_users(
+    query: str,
+    limit: int = 20,
+    admin: dict = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    Search for users in Active Directory. Admin only.
+    """
+    if not ldap_connector.is_enabled:
+        raise HTTPException(status_code=400, detail="LDAP is not configured")
+
+    users = ldap_connector.search_users(query, max_results=limit)
+
+    return {
+        "query": query,
+        "results": [
+            {
+                "username": u.username,
+                "email": u.email,
+                "display_name": u.display_name,
+                "groups": u.groups[:5],  # First 5 groups
+                "role": ldap_connector.get_role_for_user(u).value
+            }
+            for u in users
+        ],
+        "total": len(users)
+    }
+
+
+# ============== Auth Audit Endpoints (FR-006/GAP-002) ==============
+
+@app.get("/api/auth/audit")
+async def get_auth_audit_log(
+    limit: int = 100,
+    username: Optional[str] = None,
+    event_type: Optional[str] = None,
+    admin: dict = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    Get authentication audit log. Admin only.
+    """
+    events = auth_audit.get_recent_events(
+        limit=limit,
+        username=username,
+        event_type=event_type
+    )
+
+    return {
+        "events": events,
+        "total": len(events)
+    }
+
+
+@app.get("/api/auth/config")
+async def get_auth_config():
+    """
+    Get authentication configuration (public info only).
+    """
+    return {
+        "mode": AUTH_MODE,
+        "local_enabled": True,
+        "ldap_enabled": ldap_connector.is_enabled,
+        "ldap_domain": ldap_connector.domain if ldap_connector.is_enabled else None
+    }
 
 
 @app.get("/api/system/status")

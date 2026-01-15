@@ -12,7 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies including OCR and document processing
+# Install system dependencies including OCR, document processing, and LDAP
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Basic utilities
     curl \
@@ -29,6 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpng16-16 \
     libtiff6 \
     libwebp7 \
+    # LDAP/Active Directory support (FR-006/GAP-002)
+    libldap2-dev \
+    libsasl2-dev \
     # Build dependencies for some Python packages
     gcc \
     libffi-dev \
@@ -58,6 +61,14 @@ COPY backend/file_processor.py /app/file_processor.py
 COPY backend/migrate_to_elasticsearch.py /app/migrate_to_elasticsearch.py
 COPY backend/celery_app.py /app/celery_app.py
 COPY backend/tasks.py /app/tasks.py
+
+# Authentication modules (FR-006/GAP-002)
+COPY backend/auth_service.py /app/auth_service.py
+COPY backend/user_manager.py /app/user_manager.py
+COPY backend/ldap_connector.py /app/ldap_connector.py
+
+# Security middleware (FR-006 Phase 2)
+COPY backend/security_middleware.py /app/security_middleware.py
 
 # Copy entrypoint script
 COPY docker/entrypoint.sh /app/entrypoint.sh

@@ -17,6 +17,14 @@ cryptography>=42.0.0
 python-jose>=3.3.0
 httpx>=0.27.0
 
+# Authentication (FR-006/GAP-002)
+bcrypt>=4.1.0
+python-ldap>=3.4.0
+
+# Security Hardening (FR-006 Phase 2)
+slowapi>=0.1.9
+itsdangerous>=2.1.0
+
 # Elasticsearch Integration (FR-003)
 elasticsearch>=8.0.0,<9.0.0
 
