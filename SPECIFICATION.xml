@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   SentinelDLP Project Specification
-  Version: 1.8.4
-  Last Updated: 2026-01-15
+  Version: 1.8.5
+  Last Updated: 2026-01-16
   Purpose: Authoritative guardrail document for Claude instances working on this project
 
   USAGE INSTRUCTIONS:
@@ -21,12 +21,15 @@
   - FR-003 IMPLEMENTED: Elasticsearch Integration with Scan History & File Storage
   - FR-004 IMPLEMENTED: Large File Handling with IT Escalation & Smart Sampling
   - FR-005 IMPLEMENTED: Redis + Celery Queue System for 1000+ Users (GAP-001 Resolved)
-  - FR-006 PHASE_2_COMPLETE: Enterprise Authentication with Security Hardening (GAP-002 Resolved)
+  - FR-006 PHASE_3_COMPLETE: Enterprise Auth + Argon2id + Token Rotation (GAP-002 Resolved)
+  - FR-007 IMPLEMENTED: File Hash Calculation & Search (SHA256 binary hash)
+  - FR-009 IMPLEMENTED: User-based Job Tracking & Filtering (scanned_by field)
   - 5 Resolved Gaps: GAP-001, GAP-002, GAP-003, GAP-005, GAP-008
   - 3 Open Gaps: GAP-004 (Local LLM), GAP-006 (Load Balancing), GAP-007 (HTTPS)
+  - 1 Pending: FR-008 (Graph RAG Integration)
 -->
 
-<sentineldlp_specification version="1.8.4">
+<sentineldlp_specification version="1.8.5">
 
   <!-- ═══════════════════════════════════════════════════════════════════════════
        SECTION 1: PROJECT IDENTITY & PURPOSE
