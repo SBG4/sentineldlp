@@ -23,6 +23,7 @@ SCAN_INDEX_MAPPING = {
             "id": {"type": "keyword"},
             "file_id": {"type": "keyword"},
             "hash": {"type": "keyword"},
+            "file_hash": {"type": "keyword"},  # FR-007: Full SHA256 of binary file
 
             # Timestamps
             "timestamp": {"type": "date"},

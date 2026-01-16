@@ -3390,7 +3390,9 @@
             const [filters, setFilters] = useState({
                 severity: '',
                 department: '',
-                filetype: ''
+                filetype: '',
+                scanned_by: '',  // FR-009: User filter
+                file_hash: ''  // FR-007: File hash filter
             });
             const [pagination, setPagination] = useState({
                 page: 1,
@@ -3412,6 +3414,8 @@
                     if (filters.severity) params.append('severity', filters.severity);
                     if (filters.department) params.append('department', filters.department);
                     if (filters.filetype) params.append('filetype', filters.filetype);
+                    if (filters.scanned_by) params.append('scanned_by', filters.scanned_by);  // FR-009
+                    if (filters.file_hash) params.append('file_hash', filters.file_hash);  // FR-007
 
                     // FR-006 Bugfix: Use SecurityHelpers for authenticated request
                     const res = await SecurityHelpers.authFetch(`${API_BASE}/api/scans?${params}`);
@@ -3542,6 +3546,26 @@
                                     onChange={(e) => setFilters(prev => ({ ...prev, filetype: e.target.value }))}
                                 />
                             </div>
+                            <div style={{ flex: '0 0 180px' }}>
+                                <label className="form-label">Scanned By</label>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="User ID"
+                                    value={filters.scanned_by}
+                                    onChange={(e) => setFilters(prev => ({ ...prev, scanned_by: e.target.value }))}
+                                />
+                            </div>
+                            <div style={{ flex: '0 0 200px' }}>
+                                <label className="form-label">File Hash (SHA256)</label>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="Full or partial hash"
+                                    value={filters.file_hash}
+                                    onChange={(e) => setFilters(prev => ({ ...prev, file_hash: e.target.value }))}
+                                />
+                            </div>
                             <button type="submit" className="btn btn-primary" style={{ height: 42 }}>
                                 Search
                             </button>
@@ -3551,7 +3575,7 @@
                                 style={{ height: 42 }}
                                 onClick={() => {
                                     setSearchQuery('');
-                                    setFilters({ severity: '', department: '', filetype: '' });
+                                    setFilters({ severity: '', department: '', filetype: '', scanned_by: '', file_hash: '' });
                                     setPagination(prev => ({ ...prev, page: 1 }));
                                 }}
                             >
@@ -3589,6 +3613,7 @@
                                         <th>Type</th>
                                         <th>Severity</th>
                                         <th>Score</th>
+                                        <th>Scanned By</th>
                                         <th>File</th>
                                         <th>Actions</th>
                                     </tr>
@@ -3613,6 +3638,9 @@
                                             </td>
                                             <td style={{ fontFamily: 'JetBrains Mono', fontWeight: 600 }}>
                                                 {scan.overall_sensitivity_score || scan.overall_score || 0}
+                                            </td>
+                                            <td style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--text-secondary)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {scan.scanned_by ? scan.scanned_by.substring(0, 12) + '...' : '-'}
                                             </td>
                                             <td>
                                                 {scan.file_stored ? (
@@ -3790,6 +3818,20 @@
                                                 {selectedScan.overall_sensitivity_score || selectedScan.overall_score || 0}
                                             </div>
                                         </div>
+                                        <div>
+                                            <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>Scanned By</label>
+                                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                                                {selectedScan.scanned_by || 'Unknown'}
+                                            </div>
+                                        </div>
+                                        {selectedScan.file_hash && (
+                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>File Hash (SHA256)</label>
+                                                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, wordBreak: 'break-all', background: 'var(--bg-tertiary)', padding: '8px 12px', borderRadius: 8 }}>
+                                                    {selectedScan.file_hash}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {selectedScan.dimension_scores && (

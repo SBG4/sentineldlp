@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional, List
 import asyncio
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
@@ -539,7 +539,7 @@ async def test_api_connection():
 
 # Analysis endpoints
 @app.post("/api/analyze/text")
-async def analyze_text(analysis_request: AnalysisRequest, background_tasks: BackgroundTasks, request: Request = None):
+async def analyze_text(analysis_request: AnalysisRequest, background_tasks: BackgroundTasks, request: Request = None, user: dict = Depends(get_current_user)):
     """Analyze document text directly"""
     settings = load_settings()
     if not settings.api_key:
@@ -618,13 +618,16 @@ Upload timestamp: {timestamp}
                 "file_id": None,
                 "file_stored": False,
                 "hash": doc_hash,
+                "file_hash": None,  # FR-007: No binary file for text analysis
                 "content_preview": analysis_request.document_text[:1000],
                 "filesize_bytes": len(analysis_request.document_text.encode()),
                 "top_categories": top_cats,
                 "departments_affected": affected_depts,
                 "client_ip": request.client.host if request and request.client else None,
                 "user_agent": request.headers.get("user-agent") if request else None,
-                "analyzed_at": timestamp
+                "analyzed_at": timestamp,
+                # FR-009: User tracking
+                "scanned_by": user.get("sub") if user else None
             }
             await es_service.index_scan(scan_doc)
 
@@ -657,7 +660,7 @@ Upload timestamp: {timestamp}
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @app.post("/api/analyze/file")
-async def analyze_file(file: UploadFile = File(...), request: Request = None):
+async def analyze_file(file: UploadFile = File(...), request: Request = None, user: dict = Depends(get_current_user)):
     """
     Analyze uploaded file with universal format support (FR-001).
 
@@ -709,6 +712,7 @@ async def analyze_file(file: UploadFile = File(...), request: Request = None):
     analysis_id = str(uuid.uuid4())
     file_id = str(uuid.uuid4())
     doc_hash = hashlib.sha256(document_text.encode()).hexdigest()[:16]
+    file_hash = hashlib.sha256(content).hexdigest()  # FR-007: Full binary file hash
     timestamp = datetime.utcnow().isoformat() + "Z"
 
     # Store file if ES is enabled and auto_delete is disabled
@@ -826,6 +830,7 @@ Upload timestamp: {timestamp}
                 "file_id": file_id if file_stored else None,
                 "file_stored": file_stored,
                 "hash": doc_hash,
+                "file_hash": file_hash,  # FR-007: Binary file hash
                 "content_preview": document_text[:1000] if document_text else "",
                 "filesize_bytes": filesize_bytes,
                 "top_categories": top_cats,
@@ -842,7 +847,9 @@ Upload timestamp: {timestamp}
                 "extraction_warnings": processed.extraction_warnings if processed.extraction_warnings else None,
                 # Large file sampling metadata
                 "content_sampled": text_was_sampled,
-                "total_characters": total_chars
+                "total_characters": total_chars,
+                # FR-009: User tracking
+                "scanned_by": user.get("sub") if user else None
             }
             await es_service.index_scan(scan_doc)
 
@@ -1003,6 +1010,8 @@ async def search_scans(
     date_to: Optional[str] = None,
     min_score: Optional[int] = None,
     max_score: Optional[int] = None,
+    scanned_by: Optional[str] = None,  # FR-009: Filter by user
+    file_hash: Optional[str] = None,  # FR-007: Search by file hash
     page: int = 1,
     size: int = 20,
     sort_by: str = "timestamp",
@@ -1013,7 +1022,7 @@ async def search_scans(
 
     Supports:
     - Full-text search across filename and content
-    - Filtering by severity, department, filetype, date range, score range
+    - Filtering by severity, department, filetype, date range, score range, user
     - Pagination and sorting
 
     Falls back to JSON file storage if Elasticsearch is not enabled.
@@ -1028,6 +1037,8 @@ async def search_scans(
             date_to=date_to,
             min_score=min_score,
             max_score=max_score,
+            scanned_by=scanned_by,  # FR-009: Pass user filter
+            file_hash=file_hash,  # FR-007: Pass file hash filter
             page=page,
             size=size,
             sort_by=sort_by,
@@ -1602,7 +1613,7 @@ class AsyncJobRequest(BaseModel):
 
 
 @app.post("/api/jobs/analyze")
-async def submit_async_analysis(file: UploadFile = File(...), request: Request = None):
+async def submit_async_analysis(file: UploadFile = File(...), request: Request = None, user: dict = Depends(get_current_user)):
     """
     Submit a file for async analysis via Celery queue.
 
@@ -1611,7 +1622,7 @@ async def submit_async_analysis(file: UploadFile = File(...), request: Request =
     """
     if not CELERY_ENABLED:
         # Fall back to sync processing
-        return await analyze_file(file, request)
+        return await analyze_file(file, request, user)
 
     settings = load_settings()
     config = config_manager.load_config()
@@ -1674,7 +1685,8 @@ async def submit_async_analysis(file: UploadFile = File(...), request: Request =
         word_count=processed.word_count,
         detected_mime_type=processed.detected_type.mime_type,
         file_category=processed.detected_type.category.value,
-        extraction_warnings=processed.extraction_warnings
+        extraction_warnings=processed.extraction_warnings,
+        scanned_by=user.get("sub") if user else None  # FR-009: User tracking
     )
 
     return {
@@ -2001,6 +2013,7 @@ class RefreshTokenRequestOptional(BaseModel):
 @app.post("/api/auth/refresh")
 async def refresh_token_endpoint(
     request: Request,
+    response: Response,
     refresh_request: RefreshTokenRequestOptional = None
 ):
     """
@@ -2010,7 +2023,10 @@ async def refresh_token_endpoint(
     1. HttpOnly cookie (preferred, secure against XSS)
     2. Request body (fallback for API clients)
 
-    The refresh token remains valid until it expires or is revoked.
+    FR-006 Phase 3: Token Rotation
+    - Each refresh returns a new refresh token
+    - Old refresh token is invalidated
+    - Cookie is updated with new token
     """
     # Try to get refresh token from cookie first (more secure)
     token = SecureCookies.get_refresh_token(request)
@@ -2032,6 +2048,12 @@ async def refresh_token_endpoint(
             status_code=401,
             detail="Invalid or expired refresh token"
         )
+
+    # FR-006 Phase 3: Set new refresh token cookie (token rotation)
+    if "refresh_token" in result:
+        SecureCookies.set_refresh_token(response, result["refresh_token"])
+        # Remove refresh_token from response body (security - avoid exposure)
+        del result["refresh_token"]
 
     return result
 

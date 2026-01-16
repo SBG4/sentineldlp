@@ -25,6 +25,13 @@ from pathlib import Path
 from jose import jwt, JWTError, ExpiredSignatureError
 # Password hashing
 import bcrypt
+# FR-006 Phase 3: Argon2id hashing
+try:
+    from argon2 import PasswordHasher
+    from argon2.exceptions import VerifyMismatchError, InvalidHashError
+    ARGON2_AVAILABLE = True
+except ImportError:
+    ARGON2_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +47,10 @@ JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "
 
 # Bcrypt cost factor (12 is recommended for 2024+)
 BCRYPT_COST_FACTOR = 12
+
+# FR-006 Phase 3: Password hashing preference
+# "argon2id" (recommended), "bcrypt" (fallback)
+PASSWORD_HASH_ALGORITHM = os.getenv("PASSWORD_HASH_ALGORITHM", "argon2id" if ARGON2_AVAILABLE else "bcrypt")
 
 # Auth mode: local, ldap, hybrid
 AUTH_MODE = os.getenv("AUTH_MODE", "hybrid")
@@ -89,13 +100,28 @@ class AuthService:
     """
     Authentication service handling JWT tokens, password verification,
     and session management.
+
+    FR-006 Phase 3 Features:
+    - Argon2id password hashing (backward compatible with bcrypt)
+    - Refresh token rotation
+    - Token reuse detection (security breach indicator)
     """
 
     def __init__(self, config_path: str = "/app/data/config"):
         self.config_path = Path(config_path)
         self.jwt_secret = self._get_or_create_jwt_secret()
         self.active_refresh_tokens: Dict[str, Dict[str, Any]] = {}
+        # FR-006 Phase 3: Track used tokens for reuse detection
+        self.used_token_jti: Dict[str, str] = {}  # jti -> user_id mapping
         self._load_refresh_tokens()
+        self._load_used_tokens()
+        # FR-006 Phase 3: Argon2id password hasher
+        if ARGON2_AVAILABLE:
+            self.argon2_hasher = PasswordHasher(
+                time_cost=2,
+                memory_cost=65536,  # 64MB
+                parallelism=1
+            )
 
     def _get_or_create_jwt_secret(self) -> str:
         """Get existing JWT secret or generate a new one"""
@@ -149,32 +175,90 @@ class AuthService:
         except Exception as e:
             logger.error(f"Failed to save refresh tokens: {e}")
 
+    def _load_used_tokens(self):
+        """FR-006 Phase 3: Load used token JTIs for reuse detection"""
+        tokens_file = self.config_path / "used_tokens.json"
+        if tokens_file.exists():
+            try:
+                data = json.loads(tokens_file.read_text())
+                # Keep only tokens from the last 7 days to prevent unbounded growth
+                now = datetime.now(timezone.utc)
+                cutoff = (now - timedelta(days=JWT_REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
+                self.used_token_jti = {
+                    k: v for k, v in data.items()
+                    if v.get("used_at", "2000-01-01") > cutoff
+                }
+            except Exception as e:
+                logger.warning(f"Failed to load used tokens: {e}")
+                self.used_token_jti = {}
+
+    def _save_used_tokens(self):
+        """FR-006 Phase 3: Persist used token JTIs"""
+        tokens_file = self.config_path / "used_tokens.json"
+        try:
+            self.config_path.mkdir(parents=True, exist_ok=True)
+            tokens_file.write_text(json.dumps(self.used_token_jti, indent=2))
+            os.chmod(tokens_file, 0o600)
+        except Exception as e:
+            logger.error(f"Failed to save used tokens: {e}")
+
     # =========================================================================
-    # PASSWORD HASHING (BCRYPT)
+    # PASSWORD HASHING (ARGON2ID / BCRYPT)
     # =========================================================================
 
     def hash_password(self, password: str) -> str:
         """
-        Hash password using bcrypt with configurable cost factor.
-        Returns base64-encoded hash string.
+        FR-006 Phase 3: Hash password using Argon2id (preferred) or bcrypt.
+        Argon2id is the recommended algorithm for password hashing as of 2024+.
+        Returns hash string with algorithm prefix for auto-detection.
         """
-        salt = bcrypt.gensalt(rounds=BCRYPT_COST_FACTOR)
-        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-        return hashed.decode('utf-8')
+        if ARGON2_AVAILABLE and PASSWORD_HASH_ALGORITHM == "argon2id":
+            # Argon2id: memory-hard, resistant to GPU/ASIC attacks
+            return self.argon2_hasher.hash(password)
+        else:
+            # Fallback to bcrypt
+            salt = bcrypt.gensalt(rounds=BCRYPT_COST_FACTOR)
+            hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+            return hashed.decode('utf-8')
 
     def verify_password(self, password: str, hashed_password: str) -> bool:
         """
-        Verify password against bcrypt hash.
+        FR-006 Phase 3: Verify password against hash.
+        Auto-detects Argon2id vs bcrypt based on hash format.
         Uses constant-time comparison to prevent timing attacks.
         """
         try:
-            return bcrypt.checkpw(
-                password.encode('utf-8'),
-                hashed_password.encode('utf-8')
-            )
+            # Argon2id hashes start with "$argon2"
+            if hashed_password.startswith("$argon2"):
+                if not ARGON2_AVAILABLE:
+                    logger.error("Argon2 hash found but argon2-cffi not installed")
+                    return False
+                try:
+                    self.argon2_hasher.verify(hashed_password, password)
+                    return True
+                except VerifyMismatchError:
+                    return False
+                except InvalidHashError as e:
+                    logger.warning(f"Invalid Argon2 hash format: {e}")
+                    return False
+            else:
+                # Bcrypt hashes start with "$2a$", "$2b$", or "$2y$"
+                return bcrypt.checkpw(
+                    password.encode('utf-8'),
+                    hashed_password.encode('utf-8')
+                )
         except Exception as e:
             logger.warning(f"Password verification failed: {e}")
             return False
+
+    def needs_rehash(self, hashed_password: str) -> bool:
+        """
+        FR-006 Phase 3: Check if password hash should be upgraded.
+        Returns True if using bcrypt but Argon2id is preferred.
+        """
+        if PASSWORD_HASH_ALGORITHM == "argon2id" and ARGON2_AVAILABLE:
+            return not hashed_password.startswith("$argon2")
+        return False
 
     # =========================================================================
     # JWT TOKEN MANAGEMENT
@@ -315,13 +399,32 @@ class AuthService:
             logger.warning(f"Token verification failed: {e}")
             return None
 
-    def refresh_access_token(self, refresh_token: str) -> Optional[Dict[str, str]]:
+    def refresh_access_token(self, refresh_token: str) -> Optional[Dict[str, Any]]:
         """
-        Use refresh token to get new access token.
+        FR-006 Phase 3: Use refresh token to get new token pair with rotation.
+
+        Security features:
+        - Token Rotation: Returns new refresh token on each use
+        - Reuse Detection: If old token is reused, revoke ALL user tokens (breach indicator)
+
         Returns new token pair if valid, None if invalid.
         """
         payload = self.verify_token(refresh_token, token_type="refresh")
         if not payload:
+            return None
+
+        jti = payload.get("jti")
+        user_id = payload.get("sub")
+
+        # FR-006 Phase 3: Token Reuse Detection
+        # If this token was already used, it's a potential breach
+        if jti in self.used_token_jti:
+            logger.warning(
+                f"TOKEN REUSE DETECTED for user {user_id}! "
+                f"Token JTI {jti} was already used. Revoking all tokens."
+            )
+            # Revoke ALL tokens for this user - potential session hijacking
+            self.revoke_all_user_tokens(user_id)
             return None
 
         try:
@@ -331,14 +434,34 @@ class AuthService:
             logger.warning("Invalid role or provider in refresh token")
             return None
 
-        # Create new access token only (reuse refresh token)
+        # FR-006 Phase 3: Mark token as used (for reuse detection)
+        self.used_token_jti[jti] = {
+            "user_id": user_id,
+            "used_at": datetime.now(timezone.utc).isoformat()
+        }
+        self._save_used_tokens()
+
+        # Remove old refresh token from active list
+        if jti in self.active_refresh_tokens:
+            del self.active_refresh_tokens[jti]
+
+        # FR-006 Phase 3: Token Rotation - Create new token pair
+        new_access = self.create_access_token(
+            user_id,
+            payload["username"],
+            role,
+            provider
+        )
+        new_refresh = self.create_refresh_token(
+            user_id,
+            payload["username"],
+            role,
+            provider
+        )
+
         return {
-            "access_token": self.create_access_token(
-                payload["sub"],
-                payload["username"],
-                role,
-                provider
-            ),
+            "access_token": new_access,
+            "refresh_token": new_refresh,  # New refresh token (rotation)
             "token_type": "bearer",
             "expires_in": JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
         }

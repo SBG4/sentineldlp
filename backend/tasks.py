@@ -171,7 +171,8 @@ def analyze_document_task(
     word_count: Optional[int] = None,
     detected_mime_type: Optional[str] = None,
     file_category: Optional[str] = None,
-    extraction_warnings: Optional[list] = None
+    extraction_warnings: Optional[list] = None,
+    scanned_by: Optional[str] = None  # FR-009: User tracking
 ) -> Dict[str, Any]:
     """
     Async task for document analysis.
@@ -325,7 +326,9 @@ Upload timestamp: {timestamp}
             "extraction_warnings": extraction_warnings,
             # Large file metadata
             "content_sampled": text_was_sampled,
-            "total_characters": total_chars
+            "total_characters": total_chars,
+            # FR-009: User tracking
+            "scanned_by": scanned_by
         }
 
         # Calculate derived fields

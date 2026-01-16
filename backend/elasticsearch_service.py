@@ -164,6 +164,8 @@ class ElasticsearchService:
         filetype: Optional[str] = None,
         min_score: Optional[int] = None,
         max_score: Optional[int] = None,
+        scanned_by: Optional[str] = None,  # FR-009: User filter
+        file_hash: Optional[str] = None,  # FR-007: File hash filter
         page: int = 1,
         size: int = 20,
         sort_by: str = "timestamp",
@@ -222,6 +224,14 @@ class ElasticsearchService:
             if max_score is not None:
                 score_range["range"]["overall_sensitivity_score"]["lte"] = max_score
             filter_clauses.append(score_range)
+
+        # FR-009: User filter
+        if scanned_by:
+            filter_clauses.append({"term": {"scanned_by": scanned_by}})
+
+        # FR-007: File hash filter
+        if file_hash:
+            filter_clauses.append({"term": {"file_hash": file_hash}})
 
         # Build final query
         es_query: Dict[str, Any] = {"bool": {}}
